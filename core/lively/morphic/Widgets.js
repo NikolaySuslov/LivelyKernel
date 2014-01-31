@@ -1614,9 +1614,11 @@ lively.morphic.World.addMethods(
         });
     },
 
-    openSubserverViewer: function() {
+    openSubserverViewer: function(thenDo) {
         require('lively.ide.tools.SubserverViewer').toRun(function() {
-            lively.BuildSpec('lively.ide.tools.SubserverViewer').createMorph().openInWorldCenter().comeForward();
+            var viewer = lively.BuildSpec('lively.ide.tools.SubserverViewer').createMorph();
+            viewer.openInWorldCenter().comeForward();
+            thenDo && thenDo(null, viewer);
         });
     },
 
