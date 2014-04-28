@@ -13,6 +13,7 @@ localconfig.js
 !blank.html
 !welcome.html
 !run_tests.html
+!welcome_old.html
 
 # Node #
 node_modules
