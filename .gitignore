@@ -24,6 +24,7 @@ PartsBin
 
 # Users #
 users
+web
 
 # Wiki #
 objects.sqlite
