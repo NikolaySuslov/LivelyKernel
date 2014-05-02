@@ -1100,7 +1100,6 @@ lively.morphic.Text.subclass("lively.morphic.MenuItem",
     },
 
     onMouseUp: function($super, evt) {
-// show(this)
         if (evt.world.clickedOnMorph !== this && (Date.now() - evt.world.clickedOnMorphTime < 500)) {
             return false; // only a click
         }
@@ -1252,7 +1251,7 @@ lively.morphic.Morph.addMethods(
                     var builder = self.getVisualBindingsBuilderFor(name);
                     builder.openInHand();
                     builder.setPosition(pt(0,0));
-                }); 
+                });
             }]])
         ]);
 
@@ -1621,8 +1620,12 @@ lively.morphic.World.addMethods(
     },
 
     openVersionViewer: function(evt) {
-        return this.openPartItem('VersionViewer', 'PartsBin/Wiki');
+       require('lively.net.tools.Wiki').toRun(function() {
+           var versionViewer = lively.BuildSpec('lively.wiki.VersionViewer').createMorph().openInWorldCenter();
+           versionViewer.setPath(URL.source.relativePathFrom(URL.root));
+        });
     },
+
     openTestRunner: function() {
         var m = this.openPartItem('TestRunner', 'PartsBin/Tools');
         m.align(m.bounds().topCenter().addPt(pt(0,-20)), this.visibleBounds().topCenter());
@@ -1731,9 +1734,10 @@ lively.morphic.World.addMethods(
         });
     },
 
-    openSubserverViewer: function() {
+    openSubserverViewer: function(doFunc) {
         require('lively.ide.tools.SubserverViewer').toRun(function() {
-            lively.BuildSpec('lively.ide.tools.SubserverViewer').createMorph().openInWorldCenter().comeForward();
+            var subserver = lively.BuildSpec('lively.ide.tools.SubserverViewer').createMorph().openInWorldCenter().comeForward();
+            doFunc && doFunc(null, subserver);
         });
     },
 
@@ -1751,11 +1755,7 @@ lively.morphic.World.addMethods(
     },
 
     openFileTree: function() {
-        require('lively.ide.tools.FileTree').toRun(function() {
-            var fTree = lively.BuildSpec('lively.ide.tools.FileTree').createMorph().openInWorldCenter();
-            fTree.targetMorph.update();
-            fTree.comeForward();
-        });
+        lively.ide.commands.exec('lively.ide.openDirViewer');
     },
 
     openPresentationController: function() {
@@ -1922,15 +1922,10 @@ lively.morphic.World.addMethods(
             ['Tools', [
                 ['Workspace', this.openWorkspace.bind(this)],
                 ['System Code Browser', this.openSystemBrowser.bind(this)],
-                ['Browse Implementors', this.openMethodFinder.bind(this)],
-                ['Browse Senders', this.openExactReferencesMethodFinder.bind(this)],
                 ['Object Editor', this.openObjectEditor.bind(this)],
-                ['BuildSpec Editor', this.openBuildSpecEditor.bind(this)],
                 ['Test Runner', this.openTestRunner.bind(this)],
-                ['Method Finder', this.openReferencingMethodFinder.bind(this)],
                 ['Text Editor', function() { require('lively.ide').toRun(function() { lively.ide.openFile(URL.source.toString()); }); }],
                 ['System Console', this.openSystemConsole.bind(this)],
-                ['OMeta Workspace', this.openOMetaWorkspace.bind(this)],
                 ['Subserver Viewer', this.openSubserverViewer.bind(this)],
                 ['Server Workspace', this.openServerWorkspace.bind(this)],
                 ['Terminal', this.openTerminal.bind(this)],
@@ -1954,7 +1949,7 @@ lively.morphic.World.addMethods(
             ['Wiki', [
                 // ['About this wiki', this.openAboutBox.bind(this)],
                 // ['Bootstrap parts from webwerkstatt', this.openBootstrapParts.bind(this)],
-                // ['View versions of this world', this.openVersionViewer.bind(this)],
+                ['View versions of this world', this.openVersionViewer.bind(this)],
                 ['Download world', function() {
                     require('lively.persistence.StandAlonePackaging').toRun(function() {
                         lively.persistence.StandAlonePackaging.packageCurrentWorld();
@@ -1969,6 +1964,7 @@ lively.morphic.World.addMethods(
                 ["More ...", function() { window.open('http://lively-web.org/documentation/'); }]
             ]],
             ['Report a bug', this.bugReport.bind(this)],
+            ['Run command...', function() { lively.ide.commands.exec('lively.ide.commands.execute'); }],
             ['Save world as ...', this.interactiveSaveWorldAs.bind(this), 'synchron'],
             ['Save world', this.saveWorld.bind(this), 'synchron']
         ];
@@ -2074,7 +2070,7 @@ lively.morphic.World.addMethods(
         var focusedMorph = lively.morphic.Morph.focusedMorph(),
             win = this.getActiveWindow();
         dialog.openIn(this, this.visibleBounds().topLeft(), focusedMorph);
-        this.addModal(dialog.panel, win ? win : this);
+        this.addModal(dialog.panel, win && !win.isCollapsed() ? win : this);
         return dialog;
     },
     confirm: function (message, callback) {
@@ -3523,7 +3519,9 @@ lively.morphic.Box.subclass('lively.morphic.Selection',
         var group = new lively.morphic.Box(this.bounds());
         group.isGroup = true;
         this.owner.addMorph(group);
-        this.selectedMorphs.forEach(group.addMorph.bind(group));
+        this.selectedMorphs.forEach(function(ea) {
+            group.addMorph(ea);
+        });
         this.selectMorphs([group]);
         return group;
     },

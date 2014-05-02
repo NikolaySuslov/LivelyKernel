@@ -803,7 +803,19 @@ Object.extend(lively.ide.commands.byName, {
     'lively.ide.openTextEditor': {description: 'open TextEditor', isActive: lively.ide.commands.helper.noCodeEditorActive, exec: function() { lively.ide.openFile(URL.source.toString()); return true; }},
     'lively.ide.openSystemConsole': {description: 'open SystemConsole', isActive: lively.ide.commands.helper.noCodeEditorActive, exec: function() { $world.openSystemConsole(); return true; }},
     'lively.ide.openOMetaWorkspace': {description: 'open OMetaWorkspace', isActive: lively.ide.commands.helper.noCodeEditorActive, exec: function() { $world.openOMetaWorkspace(); return true; }},
-    'lively.ide.openSubserverViewer': {description: 'open SubserverViewer', isActive: lively.ide.commands.helper.noCodeEditorActive, exec: function() { $world.openSubserverViewer(); return true; }},
+    'lively.ide.openSubserverViewer': {
+        description: 'open SubserverViewer',
+        exec: function(options) {
+            options = options || {};
+            var serverName = options.serverName,
+                line = options.line;
+            $world.openSubserverViewer(function(err, subserver) {
+                serverName && subserver.targetMorph.selectServer(serverName);
+                line && subserver.get("ServerSourceCode").selectAndCenterLine(line);
+            });
+            return true;
+        }
+    },
     'lively.ide.openServerWorkspace': {description: 'open ServerWorkspace', isActive: lively.ide.commands.helper.noCodeEditorActive, exec: function() { $world.openServerWorkspace(); return true; }},
     'lively.ide.openLively2LivelyWorkspace': {description: 'open Lively2LivelyWorkspace', isActive: lively.ide.commands.helper.noCodeEditorActive, exec: function() { lively.require('lively.net.tools.Lively2Lively').toRun(function() { lively.BuildSpec("lively.net.tools.Lively2LivelyWorkspace").createMorph().openInWorldCenter().comeForward(); }); return true; }},
     'lively.ide.openShellWorkspace': {description: 'open ShellWorkspace', isActive: lively.ide.commands.helper.noCodeEditorActive, exec: function() { var codeEditor = $world.addCodeEditor({textMode: 'sh', theme: 'pastel_on_dark', title: 'Shell Workspace', content: "# You can evaluate shell commands in here\nls $PWD"}).getWindow().comeForward(); return true; }},
@@ -813,8 +825,8 @@ Object.extend(lively.ide.commands.byName, {
     'lively.ide.openFileTree': {description: 'open file tree', isActive: lively.ide.commands.helper.noCodeEditorActive, exec: function() { $world.openFileTree(); return true; }},
     'lively.ide.openDirViewer': {
         description: 'open directory viewer',
-        isActive: true,
-        exec: function(directory) {
+        isActive: Functions.True,
+        exec: function() {
             require('lively.ide.tools.DirViewer').toRun(function() {
                 lively.BuildSpec('lively.ide.tools.DirViewer').createMorph().openInWorldCenter().comeForward();
             });
@@ -939,7 +951,7 @@ Object.extend(lively.ide.commands.defaultBindings, { // bind commands to default
     'lively.morphic.Morph.openStyleEditor': "cmd-y",
     'lively.morphic.Halos.show': {mac: "cmd-h", win: 'ctrl-h'},
     'lively.morphic.List.selectItem': "m-space",
-    'lively.ide.codeSearch': {mac: ["Command-Shift-C", "Command-Shift-F"], win: ["Control-Shift-C", 'Control-Shift-G']},
+    'lively.ide.codeSearch': {mac: ["Command-Shift-C", "Command-Shift-F"], win: ["Control-Shift-C", 'Control-Shift-G', 'Control-Shift-F']},
     'lively.ide.execShellCommandInWindow': "m-s-!",
     "lively.ide.CommandLineInterface.SpellChecker.spellCheckWord": "m-s-$",
     'lively.ide.commands.execute': "m-x",
