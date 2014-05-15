@@ -32,7 +32,11 @@ Object.subclass('lively.ast.AcornInterpreter.Interpreter',
 
     runWithContext: function(node, ctx, optMapping) {
         var program = new lively.ast.AcornInterpreter.Function(node),
-            frame = lively.ast.AcornInterpreter.Frame.create(program, optMapping);
+            frame = lively.ast.AcornInterpreter.Frame.create(program);
+        if (optMapping != null) {
+            var parentScope = new lively.ast.AcornInterpreter.Scope(optMapping);
+            frame.getScope().setParentScope(parentScope);
+        }
         program.lexicalScope = frame.getScope(); // FIXME
         frame.setThis(ctx);
         return this.runWithFrameAndResult(node, frame, undefined);
@@ -62,12 +66,12 @@ Object.subclass('lively.ast.AcornInterpreter.Interpreter',
         try {
             this.accept(node, state);
         } catch (e) {
-            if (e.toString() == 'Break' && !frame.isResuming()) {
-                frame.setPC(acorn.walk.findNodeByAstIndex(frame.getOriginalAst(), e.astIndex));
-                e.top = e.top || frame;
-            }
             if (lively.Config.get('loadRewrittenCode') && e.unwindException)
                 e = e.unwindException;
+            if (e.isUnwindException && !frame.isResuming()) {
+                frame.setPC(acorn.walk.findNodeByAstIndex(frame.getOriginalAst(), e.error.astIndex));
+                e.shiftFrame(frame);
+            }
             throw e;
         }
         // finished execution, remove break
@@ -208,6 +212,8 @@ Object.subclass('lively.ast.AcornInterpreter.Interpreter',
                 this.runWithFrame(frame.getOriginalAst(), frame);
         } catch (e) {
             // TODO: create continuation
+            if (e.isUnwindException && e.error.toString() == 'Break')
+                e = e.error;
             return e;
         }
     },
@@ -283,12 +289,12 @@ Object.subclass('lively.ast.AcornInterpreter.Interpreter',
 'visiting', {
 
     accept: function(node, state) {
-        function throwBreak() {
-            throw {
+        function throwableBreak() {
+            return new UnwindException({
                 toString: function() { return 'Break'; },
                 astIndex: node.astIndex,
                 lastResult: state.result
-            };
+            });
         }
 
         var frame = state.currentFrame;
@@ -301,7 +307,7 @@ Object.subclass('lively.ast.AcornInterpreter.Interpreter',
                 frame.resumesNow();
                 if (this.breakOnResume) {
                     this.breakOnResume = false;
-                    throwBreak();
+                    throw throwableBreak();
                 }
             }
             if (frame.isAlreadyComputed(node.astIndex)) {
@@ -313,28 +319,10 @@ Object.subclass('lively.ast.AcornInterpreter.Interpreter',
                 frame.alreadyComputed[node.astIndex] = undefined;
             this.breakAtStatement = false;
             this.breakAtCall = false;
-            throwBreak();
+            throw throwableBreak();
         }
 
-        try {
-            this['visit' + node.type](node, state);
-        } catch (e) {
-            if (lively.Config.get('loadRewrittenCode') && e.unwindException)
-                e = e.unwindException;
-            if (e.isUnwindException) {
-                var frames = [e.top],
-                    lastFrame = frames.last();
-                while (lastFrame && lastFrame != e.last && lastFrame.parentFrame) {
-                    lastFrame = frames.last().parentFrame;
-                    frames.push(lastFrame);
-                }
-                if (!frames.member(frame)) {
-                    frame.setPC(node);
-                    e.shiftFrame(frame);
-                }
-            }
-            throw e;
-        }
+        this['visit' + node.type](node, state);
     },
 
     visitProgram: function(node, state) {
@@ -477,17 +465,14 @@ Object.subclass('lively.ast.AcornInterpreter.Interpreter',
             this.accept(node.block, state);
         } catch (e) {
             hasError = true;
-            err = e;
+            state.error = err = e;
         }
-        if (frame.isResuming() && (node.handler !== null)  && !frame.isAlreadyComputed(node.handler)) {
+        if (!hasError && frame.isResuming() && (node.handler !== null)  && !frame.isAlreadyComputed(node.handler))
             hasError = true;
-            err = frame.alreadyComputed[node.handler.param.astIndex];
-        }
 
         try {
             if (hasError && (node.handler !== null)) {
                 hasError = false;
-                state.error = err;
                 this.accept(node.handler, state);
                 delete state.error;
             }
@@ -505,7 +490,7 @@ Object.subclass('lively.ast.AcornInterpreter.Interpreter',
 
     visitCatchClause: function(node, state) {
         var frame = state.currentFrame;
-        if (!frame.isResuming()) {
+        if (!frame.isResuming() || state.hasOwnProperty('error')) {
             var catchScope = frame.newScope();
             catchScope.set(node.param.name, state.error);
             frame.setScope(catchScope);
@@ -516,7 +501,13 @@ Object.subclass('lively.ast.AcornInterpreter.Interpreter',
 
     visitThrowStatement: function(node, state) {
         this.accept(node.argument, state);
-        throw state.result;
+        var error = state.result;
+        if (lively.Config.get('loadRewrittenCode')) {
+            error = new UnwindException(error);
+            state.currentFrame.setPC(node);
+            error.shiftFrame(state.currentFrame);
+        }
+        throw error;
     },
 
     visitWhileStatement: function(node, state) {
@@ -947,12 +938,15 @@ Object.subclass('lively.ast.AcornInterpreter.Interpreter',
         try {
             state.result = this.invoke(recv, fn, args, state.currentFrame, state.isNew);
         } catch (e) {
-            if (e.toString() == 'Break')
-                state.currentFrame.setPC(node);
             if (lively.Config.get('loadRewrittenCode') && e.unwindException)
-                throw e.unwindException;
-            else
-                throw e;
+                e = e.unwindException;
+            if (e.isUnwindException) {
+                e.shiftFrame(state.currentFrame);
+                e = e.error;
+            }
+            state.result = e;
+            state.currentFrame.setPC(node);
+            throw e.unwindException || e;
         }
     },
 
@@ -1345,6 +1339,21 @@ Object.subclass('lively.ast.AcornInterpreter.Frame',
         return this.pcStatement
             && (node === this.pcStatement
              || node.astIndex === this.pcStatement.astIndex);
+    }
+
+},
+'testing', {
+
+    isInternal: function() {
+        if (!this._internalModules) {
+            var internalModules = [
+                lively.ast.AcornInterpreter
+            ];
+            this._internalModules = internalModules.map(function(m) {
+                return new URL(m.uri()).relativePathFrom(URL.root);
+            });
+        }
+        return this._internalModules.member(this.getOriginalAst().sourceFile);
     }
 
 });
