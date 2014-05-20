@@ -632,6 +632,39 @@ TestCase.subclass('lively.ast.tests.InterpreterTests.AcornInterpreterTests',
     test45InterpretWithContext: function() {
         var node = this.parse('this');
         this.assertEquals(42, this.interpretWithContext(node, 42));
+    },
+
+    test46aReadUndefinedVarFromGlobalScope: function() {
+        var node = this.parse('a1b2c3;')
+        this.assertRaises(this.interpret.curry(node, Global), 'undefined variable read did not throw error');
+    },
+
+    test46bAddVarToGlobalScope: function() {
+        var node = this.parse('a1b2c3 = 123;')
+        this.assertEquals(123, this.interpret(node, Global));
+        this.assertEquals(Global.a1b2c3, 123, 'global variable was not set');
+        delete Global.a1b2c3;
+    },
+
+    test47Debugger: function() {
+        var node = this.parse('debugger; 123;');
+        this.assertRaises(this.interpret.curry(node), /UNWIND.*Debugger/);
+    },
+
+    test48aLeakingFunctionImplementation: function() {
+        var src = 'function foo() {}\nfoo.name;',
+            node = this.parse(src);
+        this.assertEquals('foo', this.interpret(node), 'wrong function name returned');
+
+        src = '(function() {}).name;',
+        node = this.parse(src);
+        this.assertEquals('', this.interpret(node), 'function name for anonymous function not empty');
+    },
+
+    test48bLeakingFunctionImplementation: function() {
+        var src = '(function foo(a, b, c) {}).argumentNames();',
+            node = this.parse(src);
+        this.assertEqualState(['a', 'b', 'c'], this.interpret(node), 'wrong argument names returned');
     }
 
 });

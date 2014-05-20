@@ -85,7 +85,7 @@ Object.subclass('lively.ast.AcornInterpreter.Interpreter',
     setVariable: function(name, state) {
         var scope = state.currentFrame.getScope();
         if (name != 'arguments')
-            scope = scope.findScope(name).scope; // may throw ReferenceError
+            scope = scope.findScope(name, true).scope; // may throw ReferenceError
         scope.set(name, state.result);
     },
 
@@ -322,7 +322,17 @@ Object.subclass('lively.ast.AcornInterpreter.Interpreter',
             throw throwableBreak();
         }
 
-        this['visit' + node.type](node, state);
+        try {
+            this['visit' + node.type](node, state);
+        } catch (e) {
+            if (lively.Config.get('loadRewrittenCode') && e.unwindException)
+                e = e.unwindException;
+            if (!frame.isResuming() && e.error && e.error.toString() != 'Break') {
+                frame.setPC(node);
+                e.shiftFrame(frame);
+            }
+            throw e;
+        }
     },
 
     visitProgram: function(node, state) {
@@ -940,12 +950,12 @@ Object.subclass('lively.ast.AcornInterpreter.Interpreter',
         } catch (e) {
             if (lively.Config.get('loadRewrittenCode') && e.unwindException)
                 e = e.unwindException;
+            state.result = e;
+            state.currentFrame.setPC(node);
             if (e.isUnwindException) {
                 e.shiftFrame(state.currentFrame);
                 e = e.error;
             }
-            state.result = e;
-            state.currentFrame.setPC(node);
             throw e.unwindException || e;
         }
     },
@@ -1004,10 +1014,14 @@ Object.subclass('lively.ast.AcornInterpreter.Function',
         if (this._cachedFunction)
             return this._cachedFunction;
 
-        var self = this;
-        var fn = Object.extend(function fn(/*args*/) {
-            return self.apply(this, Array.from(arguments));
-        }, {
+        var self = this,
+            forwardFn = function FNAME(/*args*/) {
+                return self.apply(this, Array.from(arguments));
+            },
+            forwardSrc = forwardFn.toStringRewritten ? forwardFn.toStringRewritten() : forwardFn.toString();
+        var fn = Object.extend(
+            // FIXME: this seems to be the only way to get the name attribute right
+            eval('(' + forwardSrc.replace('FNAME', this.name() || '') + ')'), {
             isInterpretableFunction: true,
             forInterpretation: function() { return fn; },
             ast: function() { return self.node; },
@@ -1020,6 +1034,9 @@ Object.subclass('lively.ast.AcornInterpreter.Function',
             // evaluatedSource: function() { return ...; },
             // custom Lively stuff
             methodName: this.name(),
+            argumentNames: function() {
+                return self.argNames();
+            }
         });
 
         // TODO: prepare more stuff from optFunc
@@ -1153,12 +1170,15 @@ Object.subclass('lively.ast.AcornInterpreter.Scope',
 
     addToMapping: function(name) { return this.set(name, undefined); },
 
-    findScope: function(name) {
+    findScope: function(name, isSet) {
         if (this.has(name)) {
             return { val: this.get(name), scope: this };
         }
         if (this.getMapping() === Global) { // reached global scope
-            throw new ReferenceError(name + ' is not defined');
+            if (!isSet)
+                throw new ReferenceError(name + ' is not defined');
+            else
+                return { val: undefined, scope: this };
         }
         // TODO: what is this doing?
         // lookup in my current function
@@ -1172,7 +1192,7 @@ Object.subclass('lively.ast.AcornInterpreter.Scope',
         var parentScope = this.getParentScope();
         if (!parentScope)
             throw new ReferenceError(name + ' is not defined');
-        return parentScope.findScope(name);
+        return parentScope.findScope(name, isSet);
     }
 
 });
