@@ -684,12 +684,11 @@ Object.subclass('lively.ast.AcornInterpreter.Interpreter',
 
     visitVariableDeclarator: function(node, state) {
         var oldResult = state.result, val;
-        if (node.init)
+        if (node.init) {
             this.accept(node.init, state);
-        else
-            state.result = undefined;
-        // addToMapping is done in evaluateDeclarations()
-        this.setVariable(node.id.name, state);
+            // addToMapping is done in evaluateDeclarations()
+            this.setVariable(node.id.name, state);
+        }
         state.result = oldResult;
     },
 
@@ -1162,7 +1161,9 @@ Object.subclass('lively.ast.AcornInterpreter.Scope',
 
     set: function(name, value) { return this.mapping[name] = value; },
 
-    addToMapping: function(name) { return this.set(name, undefined); },
+    addToMapping: function(name) {
+        return this.has(name) ? this.get(name) : this.set(name, undefined);
+    },
 
     findScope: function(name, isSet) {
         if (this.has(name)) {
@@ -1190,6 +1191,25 @@ Object.subclass('lively.ast.AcornInterpreter.Scope',
     }
 
 });
+
+Object.extend(lively.ast.AcornInterpreter.Interpreter, {
+
+    stripInterpreterFrames: function(topFrame) {
+        var allFrames = [topFrame];
+        while (allFrames.last().getParentFrame())
+            allFrames.push(allFrames.last().getParentFrame());
+        allFrames = allFrames.select(function(frame) {
+            return !frame.isInternal();
+        });
+        allFrames.push(undefined);
+        allFrames.reduce(function(frame, parentFrame) {
+            frame.setParentFrame(parentFrame);
+            return parentFrame;
+        });
+        return allFrames[0];
+    }
+
+})
 
 Object.subclass('lively.ast.AcornInterpreter.Frame',
 'initialization', {
@@ -1233,7 +1253,9 @@ Object.subclass('lively.ast.AcornInterpreter.Frame',
 	},
 
     reset: function() {
-        var args = this.getArguments();
+        try {
+            var args = this.getArguments();
+        } catch (e) { /* might throw ReferenceError */ }
         this.scope             = new lively.ast.AcornInterpreter.Scope(null, this.scope.getParentScope());
         this.returnTriggered   = false;
         this.breakTriggered    = null;      // null, true or string (labeled break)
@@ -1242,7 +1264,7 @@ Object.subclass('lively.ast.AcornInterpreter.Frame',
         this.pcStatement       = null;      // statement node of the pc
         this.alreadyComputed   = {};        // maps astIndex to values. Filled
                                             // when we unwind from captured state
-        this.setArguments(args);
+        if (args != undefined) this.setArguments(args);
     }
 
 },
