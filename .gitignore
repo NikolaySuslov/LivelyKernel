@@ -11,8 +11,8 @@ localconfig.js
 # Worlds #
 *.html
 !blank.html
-!welcome.html
 !run_tests.html
+
 
 # Node #
 node_modules
@@ -23,10 +23,10 @@ PartsBin
 
 # Users #
 users
+web
 
 # Wiki #
 objects.sqlite
 
 # Debugging -- for development, will go away soon #
 DBG_*.js
-
