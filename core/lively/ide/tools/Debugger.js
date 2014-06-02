@@ -392,9 +392,10 @@ lively.BuildSpec('lively.ide.tools.Debugger', {
             },
                 describe: function describe(obj) {
                 var str;
-                if (obj && obj.name) {
+                if (obj === Global)
+                    str = 'Global';
+                else if (obj && obj.name)
                     str = Object.isFunction(obj.name) ? obj.name() : obj.name;
-                }
                 if (!str) str = Objects.shortPrintStringOf(obj);
                 if (str.length > 32) str = str.substring(0, 36) + '...';
                 return str;
@@ -429,7 +430,8 @@ lively.BuildSpec('lively.ide.tools.Debugger', {
                 this.tree.startStepping(500, 'update');
             },
                 updateScope: function updateScope(item) {
-                var scope = item.data;
+                var scope = item.data,
+                    thiz = item.thiz;
                 if (scope.getMapping() === Global) {
                     delete item.children;
                     return;
@@ -438,6 +440,8 @@ lively.BuildSpec('lively.ide.tools.Debugger', {
                 var lookup = {};
                 if (item.children) item.children.each(function(i) { lookup[i.name] = i; });
                 item.children = [];
+                if (thiz !== undefined)
+                    item.children.push(this.createItem({ this: thiz }, 'this'));
                 props.each(function(prop) {
                     var existing = lookup[prop];
                     if (existing) {
@@ -463,7 +467,8 @@ lively.BuildSpec('lively.ide.tools.Debugger', {
                 if (frame != null) {
                     this.tree.item = {
                         name: '<current scope>',
-                        data: frame.getScope()
+                        data: frame.getScope(),
+                        thiz: frame.getThis()
                     };
                     this.updateScope(this.tree.item);
                 } else { // frame unselected
@@ -552,7 +557,11 @@ lively.BuildSpec('lively.ide.tools.Debugger', {
         this.updateDebugger(frame, result);
     },
         updateDebugger: function updateDebugger(frame, result) {
-        if (frame.pc == null) { // finished frame
+        if (result instanceof lively.ast.Continuation) {
+            this.setTopFrame(result.currentFrame);
+            if (result.error && result.error.toString())
+                this.getWindow().setTitle(result.error.toString());
+        } else if (frame.pc == null) { // finished frame
             frame = frame.getParentFrame();
             if (frame) {
                 frame.alreadyComputed[frame.pc.astIndex] = result;
@@ -563,10 +572,6 @@ lively.BuildSpec('lively.ide.tools.Debugger', {
             this.setTopFrame(lively.ast.AcornInterpreter.Interpreter.stripInterpreterFrames(result.unwindException.top));
             if (result.toString && result.toString())
                 this.getWindow().setTitle(result.toString());
-        } else if (result instanceof lively.ast.Continuation) {
-            this.setTopFrame(result.currentFrame);
-            if (result.error && result.error.toString())
-                this.getWindow().setTitle(result.error.toString());
         } else
             this.setCurrentFrame(frame); // simple pc advancement
     }
