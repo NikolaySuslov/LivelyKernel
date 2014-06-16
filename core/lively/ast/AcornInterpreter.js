@@ -18,7 +18,7 @@ Object.subclass('lively.ast.AcornInterpreter.Interpreter',
         this.breakAtCall      = false; // for e.g. step into
     },
 
-    statements: ['EmptyStatement', 'ExpressionStatement', 'IfStatement', 'LabeledStatement', 'BreakStatement', 'ContinueStatement', 'WithStatement', 'SwitchStatement', 'ReturnStatement', 'TryStatement', 'ThrowStatement', 'WhileStatement', 'DoWhileStatement', 'ForStatement', 'ForInStatement', 'DebuggerStatement', 'VariableDeclaration', 'FunctionDeclaration', 'SwitchCase'] // without BlockStatement
+    statements: ['EmptyStatement', 'ExpressionStatement', 'IfStatement', 'LabeledStatement', 'BreakStatement', 'ContinueStatement', 'WithStatement', 'SwitchStatement', 'ReturnStatement', 'ThrowStatement', 'WhileStatement', 'DoWhileStatement', 'ForStatement', 'ForInStatement', 'DebuggerStatement', 'VariableDeclaration', 'FunctionDeclaration', 'SwitchCase'] // without BlockStatement
 
 },
 'interface', {
@@ -279,6 +279,12 @@ Object.subclass('lively.ast.AcornInterpreter.Interpreter',
             scope = newScope
             fState = fState[2]; // parentFrameState
         } while (fState && fState != Global);
+        // lastly, add Global scope
+        newScope = new lively.ast.AcornInterpreter.Scope(Global);
+        if (scope)
+            scope.setParentScope(newScope);
+        else
+            topScope = newScope;
 
         // recreate lively.ast.AcornInterpreter.Function object
         func = new lively.ast.AcornInterpreter.Function(func._cachedAst, topScope);
@@ -474,6 +480,8 @@ Object.subclass('lively.ast.AcornInterpreter.Interpreter',
         try {
             this.accept(node.block, state);
         } catch (e) {
+            if (lively.Config.get('loadRewrittenCode') && e.unwindException && e.toString() == 'Break')
+                throw e.unwindException;
             hasError = true;
             state.error = err = e;
         }
@@ -963,7 +971,7 @@ Object.subclass('lively.ast.AcornInterpreter.Interpreter',
             this.accept(node.property, state);
             property = state.result;
         }
-        var getter = object.__lookupGetter__(property);
+        var getter = object != null ? object.__lookupGetter__(property) : false;
         if (getter) {
             state.result = this.invoke(object, getter, [], state.currentFrame, false/*isNew*/)
         } else {
@@ -1069,7 +1077,7 @@ Object.subclass('lively.ast.AcornInterpreter.Function',
                 return source.substring(ast.start, ast.end);
         }
 
-        return escodegen.generate(this.getAst());;
+        return escodegen.generate(this.getAst());
     }
 
 },

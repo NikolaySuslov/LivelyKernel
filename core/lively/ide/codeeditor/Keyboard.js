@@ -1,4 +1,4 @@
-module('lively.ide.codeeditor.Keyboard').requires().toRun(function() {
+module('lively.ide.codeeditor.Keyboard').requires('lively.ide.codeeditor.JumpChar').toRun(function() {
 
 module("lively.ide.CodeEditor");
 
@@ -26,7 +26,9 @@ Object.subclass('lively.ide.CodeEditor.KeyboardShortcuts',
             self.setupSnippetBindings(kbd);
             self.setupASTNavigation(kbd);
             self.setupKeyboardMacroBindings(kbd);
+            self.setupToolSpecificBindings(kbd);
             self.setupUsefulHelperBindings(kbd);
+            self.setupJumpChar(kbd);
             self.setupUserKeyBindings(kbd, codeEditor);
             kbd.hasLivelyKeys = true;
         });
@@ -168,6 +170,18 @@ Object.subclass('lively.ide.CodeEditor.KeyboardShortcuts',
     },
 
     setupTextManipulationBindings: function(kbd) {
+
+        function joinLine(ed) {
+            if (!ed.selection.isEmpty()) ed.selection.clearSelection();
+            var pos = ed.getCursorPosition(),
+                rowString = ed.session.doc.getLine(pos.row),
+                whitespaceMatch = rowString.match(/^\s*/),
+                col = (whitespaceMatch && whitespaceMatch[0].length) || 0;
+            ed.moveCursorToPosition({row: pos.row, column: col});
+            ed.removeToLineStart();
+            ed.remove('left');
+        }
+
         this.addCommands(kbd, [{
                 name: 'removeSelectionOrLine',
                 bindKey: {win: 'Ctrl-X', mac: 'Command-X'},
@@ -203,7 +217,28 @@ Object.subclass('lively.ide.CodeEditor.KeyboardShortcuts',
                 exec: function(ed) { ed.navigateLineEnd(); ed.insert('\n'); },
                 multiSelectAction: 'forEach',
                 readOnly: false
-            },{
+            }, {
+                name: 'joinLineAbove',
+                exec: joinLine,
+                multiSelectAction: 'forEach',
+                readOnly: false
+            }, {
+                name: 'joinLineBelow',
+                exec: function(ed) { ed.navigateDown(); joinLine(ed); },
+                multiSelectAction: 'forEach',
+                readOnly: false
+            }, {
+                name: 'duplicateLine',
+                exec: function(ed) { ed.execCommand('copylinesdown'); },
+                multiSelectAction: 'forEach',
+                readOnly: false
+            }, {
+                name: "movelinesup",
+                exec: function(editor) { editor.moveLinesUp(); }
+            }, {
+                name: "movelinesdown",
+                exec: function(editor) { editor.moveLinesDown(); }
+            }, {
                 name: "blockoutdent",
                 bindKey: {win: "Ctrl-[", mac: "Command-["},
                 exec: function(ed) { ed.blockOutdent(); },
@@ -343,6 +378,36 @@ Object.subclass('lively.ide.CodeEditor.KeyboardShortcuts',
                     ed.selection.setRange({start: {row: startLine, column: 0}, end: ed.getCursorPosition()});
                 },
                 multiSelectAction: "forEach"
+            }, {
+                name: 'curlyBlockOneLine',
+                exec: function(ed) {
+                    // "if (foo) {\n 3+3;\n}" -> "if (foo) { 3+3; }"
+                    function stringLeftOfPosIncludes(pos, string) {
+                        var before = ed.session.getTextRange({start: {column: 0, row: pos.row}, end: pos}),
+                            idx = before.indexOf(string);
+                        return idx > -1 && idx;
+                    }
+    
+                    var pos = ed.selection.getCursor();
+                    // are we right from a "}" and on the same line?
+                    var endBracket = ed.find(/\}/, {start: pos, backwards: true, preventScroll: true});
+                    // if not search forward
+                    if (!endBracket || endBracket.end.row !== pos.row) {
+                        endBracket = ed.find(/\}/, {start: pos, backwards: false, preventScroll: true});
+                    }
+                    if (!endBracket) return;
+                    ed.moveCursorToPosition(endBracket.end);
+                    pos = endBracket.end;
+                    var matchingBracketPos = ed.session.findMatchingBracket(pos);
+                    if (!matchingBracketPos) return;
+                    while (pos.row !== matchingBracketPos.row) {
+                        joinLine(ed); ed.insert(' ');
+                        pos = ed.selection.getCursor();
+                    }
+                    ed.selection.moveCursorToPosition(matchingBracketPos);
+                },
+                multiSelectAction: 'forEach',
+                readOnly: false
             }]);
     },
 
@@ -449,7 +514,7 @@ Object.subclass('lively.ide.CodeEditor.KeyboardShortcuts',
                         found = i;
                         if (!isEmptyLine(lines[i-1]) && isEmptyLine(lines[i])) break;
                     }
-                    ed.selection[ed.emacsMark() ? "selectToPosition": "moveToPosition"]({row: pos.row+found, column: 0});
+                    ed.selection[ed.emacsMark && ed.emacsMark() ? "selectToPosition": "moveToPosition"]({row: pos.row+found, column: 0});
                 },
                 readOnly: true
             }, {
@@ -464,7 +529,7 @@ Object.subclass('lively.ide.CodeEditor.KeyboardShortcuts',
                         found = i;
                         if (!isEmptyLine(lines[i+1]) && isEmptyLine(lines[i])) break;
                     }
-                    ed.selection[ed.emacsMark() ? "selectToPosition": "moveToPosition"]({row: found, column: 0});
+                    ed.selection[ed.emacsMark && ed.emacsMark() ? "selectToPosition": "moveToPosition"]({row: found, column: 0});
                 },
                 readOnly: true
             }, {
@@ -639,6 +704,40 @@ Object.subclass('lively.ide.CodeEditor.KeyboardShortcuts',
                     ed.$morph.setShowWarnings(!showsWarnings);
                     alertOK('showing warnings ' + (!showsWarnings ? 'enabled': 'disabled'));
                 }
+            }, {
+                name: "guess tab size",
+                exec: function(ed) {
+                    ed.$morph.guessAndSetTabSize();
+                }
+            }, {
+                name: "describeKey",
+                exec: function(ed) {
+                    function uninstall() {
+                        commandExecHandler && ed.commands.removeEventListener('exec', commandExecHandler);
+                        ed.keyBinding.$callKeyboardHandlers = ed.keyBinding.$callKeyboardHandlers.getOriginal();
+                    }
+                    var origCallKeyboardHandlers = ed.keyBinding.$callKeyboardHandlers,
+                        lastKeys = [],
+                        commandExecHandler = ed.commands.addEventListener('exec', function(e) {
+                            uninstall();
+                            e.stopPropagation(); e.preventDefault();
+                            $world.addCodeEditor({
+                                title: 'describe key "' + lastKeys.join(' ') + '"',
+                                content: Strings.format('"%s" is bound to\n%s',
+                                    lastKeys.join(' '), Objects.inspect(e.command)),
+                                textMode: 'text'
+                            });
+                            return true;
+                        });
+                    ed.keyBinding.$callKeyboardHandlers = ed.keyBinding.$callKeyboardHandlers.wrap(function(proceed, hashId, keyString, keyCode, e) {
+                        if (e) {
+                            lively.morphic.EventHandler.prototype.patchEvent(e);
+                            lastKeys.push(e.getKeyString({ignoreModifiersIfNoCombo: true}));
+                        }
+                        return proceed(hashId, keyString, keyCode, e);
+                    });
+                    ed.showCommandLine("Press key(s) to find out what command the key is bound to");
+                }
             }]);
     },
 
@@ -719,7 +818,7 @@ Object.subclass('lively.ide.CodeEditor.KeyboardShortcuts',
             name: 'forwardSexp',
             bindKey: 'Ctrl-Alt-f|Ctrl-Alt-Right',
             exec: function(ed) {
-                move('forwardSexp', ed.$morph, ed.emacsMark());
+                move('forwardSexp', ed.$morph, ed.emacsMark && ed.emacsMark());
             },
             multiSelectAction: 'forEach',
             readOnly: true
@@ -727,7 +826,7 @@ Object.subclass('lively.ide.CodeEditor.KeyboardShortcuts',
             name: 'backwardSexp',
             bindKey: 'Ctrl-Alt-b|Ctrl-Alt-Left',
             exec: function(ed) {
-                move('backwardSexp', ed.$morph, ed.emacsMark());
+                move('backwardSexp', ed.$morph, ed.emacsMark && ed.emacsMark());
             },
             multiSelectAction: 'forEach',
             readOnly: true
@@ -735,8 +834,8 @@ Object.subclass('lively.ide.CodeEditor.KeyboardShortcuts',
             name: 'backwardUpSexp',
             bindKey: 'Ctrl-Alt-u|Ctrl-Alt-Up',
             exec: function(ed) {
-                ed.pushEmacsMark(ed.getCursorPosition());
-                move('backwardUpSexp', ed.$morph, ed.emacsMark());
+                ed.pushEmacsMark && ed.pushEmacsMark(ed.getCursorPosition());
+                move('backwardUpSexp', ed.$morph, ed.emacsMark && ed.emacsMark());
             },
             multiSelectAction: 'forEach',
             readOnly: true
@@ -744,8 +843,8 @@ Object.subclass('lively.ide.CodeEditor.KeyboardShortcuts',
             name: 'forwardDownSexp',
             bindKey: 'Ctrl-Alt-d|Ctrl-Alt-Down',
             exec: function(ed) {
-                ed.pushEmacsMark(ed.getCursorPosition());
-                move('forwardDownSexp', ed.$morph, ed.emacsMark());
+                ed.pushEmacsMark && ed.pushEmacsMark(ed.getCursorPosition());
+                move('forwardDownSexp', ed.$morph, ed.emacsMark && ed.emacsMark());
             },
             multiSelectAction: 'forEach',
             readOnly: true
@@ -753,7 +852,7 @@ Object.subclass('lively.ide.CodeEditor.KeyboardShortcuts',
             name: 'markDefun',
             bindKey: 'Ctrl-Alt-h',
             exec: function(ed) {
-                ed.pushEmacsMark(ed.getCursorPosition());
+                ed.pushEmacsMark && ed.pushEmacsMark(ed.getCursorPosition());
                 select('rangeForFunctionOrDefinition', ed.$morph);
             },
             multiSelectAction: 'forEach',
@@ -829,7 +928,7 @@ Object.subclass('lively.ide.CodeEditor.KeyboardShortcuts',
                         return rev ? markerRange.start < idx : markerRange.start > idx; }),
                     nextPos = next && ed.$morph.indexToPosition(next.start);
                 if (!nextPos) return;
-                ed.pushEmacsMark(pos);
+                ed.pushEmacsMark && ed.pushEmacsMark(pos);
                 ed.moveCursorToPosition(nextPos)
             },
             multiSelectAction: 'forEach',
@@ -902,6 +1001,79 @@ Object.subclass('lively.ide.CodeEditor.KeyboardShortcuts',
         }]);
     },
 
+    setupToolSpecificBindings: function(kbd) {
+        kbd.addCommands([{
+            name: "runtests",
+            exec: function(ed) {
+                // hack: get currently active system browser and do "run test command"
+                var win = $world.getActiveWindow();
+                var focus = $world.focusedMorph();
+                var browser = win && win.targetMorph && win.targetMorph.ownerWidget;
+                if (!browser || !browser.isSystemBrowser) {
+                    alert('Currently not in a SCB!');
+                    return;
+                }
+                var cmd = new lively.ide.RunTestMethodCommand(browser);
+                if (!cmd.isActive()) {
+                    alert('Not in a test method or class!');
+                    return;
+                }
+                cmd.runTest();
+                focus.focus();
+            }
+        }, {
+            name: "resizeWindow",
+            exec: function(ed, how) {
+                var win = $world.getActiveWindow();
+                if (!win) return;
+
+                var worldB = $world.visibleBounds().insetBy(20),
+                    winB = win.bounds(),
+                    bounds = worldB;
+
+                if (!win.normalBounds) win.normalBounds = winB;
+
+                var thirdW = Math.max(660, bounds.width/3),
+                    thirdColBounds = bounds.withWidth(thirdW);
+
+                if (!how) askForHow();
+                else doResize(how);
+
+                // -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+                function askForHow() {
+                    var actions = ['fullscreen','center','right','left','bottom',
+                                   'top',"shrinkWidth", "growWidth","shrinkHeight",
+                                   "growHeight",'reset'];
+                    lively.ide.tools.SelectionNarrowing.chooseOne(
+                        actions, function(err, candidate) { doResize(candidate); },
+                        {prompt: "How to resize the window?"});
+                }
+
+                function doResize(how) {
+                    switch(how) {
+                        case 'fullscreen': break;
+                        case 'center': bounds = thirdColBounds.withCenter(worldB.center()); break;
+                        case 'right': bounds = thirdColBounds.withTopRight(worldB.topRight()); break;
+                        case 'left': bounds = thirdColBounds.withTopLeft(bounds.topLeft()); break;
+                        case 'bottom': bounds = bounds.withY(bounds.y + bounds.height/2);
+                        case 'top': bounds = bounds.withHeight(bounds.height/2); break;
+                        case "shrinkWidth": win.resizeBy(pt(-20,0)); return;
+                        case "growWidth": win.resizeBy(pt(20,0)); return;
+                        case "shrinkHeight": win.resizeBy(pt(0,-20)); return;
+                        case "growHeight":  win.resizeBy(pt(0,20)); return;
+                        case 'reset': bounds = win.normalBounds || pt(500,400).extentAsRectangle().withCenter(bounds.center()); break;
+                        default: return;
+                    }
+    
+                    if (how === 'reset') delete win.normalBounds;
+    
+                    win.setBounds(bounds);
+                }
+            }
+        }]);
+    },
+
     setupUsefulHelperBindings: function(kbd) {
         kbd.addCommands([{
             name: 'insertDate',
@@ -913,6 +1085,20 @@ Object.subclass('lively.ide.CodeEditor.KeyboardShortcuts',
             },
             multiSelectAction: 'forEach',
             handlesCount: true
+        }, {
+            name: "stringifySelection",
+            exec: function(editor) {
+                var sel = editor.selection;
+                if (!sel || sel.isEmpty()) return;
+                var range =  editor.getSelectionRange(),
+                    selString = editor.session.getTextRange(range),
+                    stringified = selString
+                        .split('\n')
+                        .invoke('replace' ,/"/g, '\\"')
+                        .invoke('replace' ,/(.+)/g, '"$1\\n"')
+                        .join('\n+ ');
+                editor.session.doc.replace(range, stringified);
+            }
         }, {
             name: 'browseURLOrPathInWebBrowser',
             exec: function(ed, args) {
@@ -951,6 +1137,10 @@ Object.subclass('lively.ide.CodeEditor.KeyboardShortcuts',
             multiSelectAction: 'forEach',
             handlesCount: true
         }]);
+    },
+
+    setupJumpChar: function(kbd) {
+        lively.ide.codeeditor.JumpChar.setup(kbd);
     },
 
     setupUserKeyBindings: function(kbd, codeEditor) {

@@ -162,6 +162,9 @@ Object.extend(lively.ast.Rewriting, {
                 'core/lively/bindings/Core.js', 'core/lively/persistence/Serializer.js',
                 'core/lively/Main.js', 'core/lively/net/WebSockets.js', 'core/cop/Layers.js',
                 'core/lively/OldModel.js', 'core/lively/Data.js', 'core/lively/Network.js',
+                'core/lively/ast/Debugging.js', 'core/lively/ast/AcornInterpreter.js',
+                /* 'core/lively/ast/Rewriting.js',*/ 'core/lively/ast/AstHelper.js',
+                'core/lively/ast/acorn.js',
                 // neccessary to be able to load everything else dynamically
                 'core/lively/store/Interface.js'
             ];
@@ -1552,7 +1555,7 @@ lively.ast.Rewriting.BaseVisitor.subclass("lively.ast.Rewriting.RewriteVisitor",
     lively.ast.Rewriting.findNodeByAstIndexBaseDef =
         "window.findNodeByAstIndex = function findNodeByAstIndex(ast, astIndexToFind) {\n"
       + "    if (ast.astIndex === astIndexToFind) return ast;\n"
-      + "    var i, j, node, nodes, found,\n"
+      + "    var i, j, node, nodes, found = null,\n"
       + "        props = Object.getOwnPropertyNames(ast);\n"
       + "    for (i = 0; i < props.length; i++) {\n"
       + "        node = ast[props[i]];\n"
@@ -1562,23 +1565,40 @@ lively.ast.Rewriting.BaseVisitor.subclass("lively.ast.Rewriting.RewriteVisitor",
       + "                node = nodes[j];\n"
       + "                if (node.key && node.value) {\n"
       + "                    if (node.key.astIndex >= astIndexToFind)\n"
-      + "                        return findNodeByAstIndex(node.key, astIndexToFind);\n"
+      + "                        found = findNodeByAstIndex(node.key, astIndexToFind);\n"
       + "                    else if (node.value.astIndex >= astIndexToFind)\n"
-      + "                        return findNodeByAstIndex(node.value, astIndexToFind);\n"
+      + "                        found = findNodeByAstIndex(node.value, astIndexToFind);\n"
+      + "                    if (found !== null) break;\n"
       + "                    continue;\n"
       + "                } else if (!node || (node.type == null) || (node.astIndex < astIndexToFind)) continue;\n"
-      + "                return findNodeByAstIndex(node, astIndexToFind);\n"
+      + "                found = findNodeByAstIndex(node, astIndexToFind);\n"
+      + "                if (found !== null) break;\n"
       + "            }\n"
+      + "            if (found !== null) break;\n"
       + "            continue;\n"
       + "        } else if (!node || (node.type == null) || (node.astIndex < astIndexToFind)) continue;\n"
-      + "        return findNodeByAstIndex(node, astIndexToFind);\n"
+      + "        found = findNodeByAstIndex(node, astIndexToFind);\n"
+      + "        if (found !== null) break;\n"
       + "    }\n"
-      + "    return null;\n"
+      + "    return found;\n"
       + "};\n";
 
     lively.ast.Rewriting.createClosureBaseDef =
         "window.__createClosure = function __createClosure(idx, parentFrameState, f) {\n"
-      + "    f._cachedAst = LivelyDebuggingASTRegistry[idx];\n"
+      + "    var ast = LivelyDebuggingASTRegistry[idx];\n"
+      + "    if (ast && ast.hasOwnProperty('registryRef') && ast.hasOwnProperty('indexRef'))\n"
+      + "        // lazily solve reference to complete ast\n"
+      + "        Object.defineProperty(f, '_cachedAst', {\n"
+      + "            configurable: true, // important for delete\n"
+      + "            get: function() {\n"
+      + "                var cachedAst = findNodeByAstIndex(LivelyDebuggingASTRegistry[ast.registryRef], ast.indexRef);\n"
+      + "                delete this._cachedAst;\n"
+      + "                this._cachedAst = cachedAst;\n"
+      + "                return cachedAst;\n"
+      + "            }\n"
+      + "        });\n"
+      + "    else\n"
+      + "        f._cachedAst = ast;\n"
       + "    // parentFrameState = [computedValues, varMapping, parentParentFrameState]\n"
       + "    f._cachedScopeObject = parentFrameState;\n"
       + "    f.livelyDebuggingEnabled = true;\n"

@@ -641,6 +641,11 @@ TestCase.subclass('lively.lang.tests.ExtensionTests.GridTest', {
         this.assertEqualState(
             expected,
             Grid.tableFromObjects(objects));
+
+        // gracefully handle non-arrays
+        var object = {x:1,y:2},
+            expected = [["x","y"],[1,2]];
+        this.assertEqualState(expected, Grid.tableFromObjects(object));
     }
 });
 
@@ -853,6 +858,105 @@ AsyncTestCase.subclass('lively.lang.tests.ExtensionTests.Function',
         });
     },
 
+    testWorkerWithCallbackQueue: function() {
+        var calls = [];
+        function worker(thenDo) {
+            var workerState = 22;
+            calls.push("workerCalled");
+            setTimeout(function() {
+                thenDo(null, ++workerState);
+            }, 200);
+        }
+
+        function thenDo1(err, arg) { calls.push("thenDo1Called:"+arg); }
+        function thenDo2(err, arg) { calls.push("thenDo2Called:"+arg); }
+        function thenDo3(err, arg) { calls.push("thenDo3Called:"+arg); }
+        function thenDo4(err, arg) { calls.push("thenDo4Called:"+arg); }
+
+        var proc = Functions.workerWithCallbackQueue('testWorkerWithCallbackQueue', worker).whenDone(thenDo1);
+        this.assertIdentity(proc, Functions.workerWithCallbackQueue('testWorkerWithCallbackQueue', worker), 'not identical process');
+        proc.whenDone(thenDo2);
+
+        setTimeout(function() { proc.whenDone(thenDo3); }, 100);
+
+        this.waitFor(function() { return calls.length > 1; }, 10, function() {
+            var expected = ["workerCalled", "thenDo1Called:23", "thenDo2Called:23", "thenDo3Called:23"];
+            this.assertEquals(expected, calls);
+
+            calls = [];
+            var proc2 = Functions.workerWithCallbackQueue('testWorkerWithCallbackQueue', worker).whenDone(thenDo4);
+            this.assert(proc2 !== proc, 'new process equals old?');
+            this.waitFor(function() { return calls.length > 1; }, 10, function() {
+                var expected = ["workerCalled", "thenDo4Called:23"];
+                this.assertEquals(expected, calls);
+                this.done();
+            });
+        });
+    },
+
+    testWorkerWithCallbackQueueWithTimout: function() {
+        var calls = [];
+        function worker(thenDo) {
+            setTimeout(function() {
+                calls.push("workerCalled");
+                thenDo(null); }, 200);
+        }
+
+        function thenDo1(err, arg) { calls.push("thenDo1Called:" + (err ? err.message : null)); }
+        function thenDo2(err, arg) { calls.push("thenDo2Called:" + (err ? err.message : null)); }
+
+        var proc = Functions.workerWithCallbackQueue('testWorkerWithCallbackQueueWithTimout', worker, 100).whenDone(thenDo1);
+        setTimeout(function() { proc.whenDone(thenDo2); }, 50);
+
+        this.waitFor(function() { return calls.length > 1; }, 10, function() {
+            var expected = ["thenDo1Called:timeout", "thenDo2Called:timeout"];
+            this.assertEquals(expected, calls);
+            this.done();
+        });
+    },
+
+    testWorkerWithCallbackQueueWithError: function() {
+        var calls = [];
+        function worker(thenDo) {
+            var workerState = 22;
+            calls.push("workerCalled");
+            throw new Error('foo');
+        }
+
+        function thenDo1(err, arg) { calls.push(err.message); }
+        function thenDo2(err, arg) { calls.push(err.message); }
+
+        Functions.workerWithCallbackQueue('testWorkerWithCallbackQueueWithError', worker).whenDone(thenDo1);
+        Functions.workerWithCallbackQueue('testWorkerWithCallbackQueueWithError', worker).whenDone(thenDo2);
+
+        this.waitFor(function() { return calls.length > 1; }, 10, function() {
+            var expected = ["workerCalled", "foo", "foo"];
+            this.assertEquals(expected, calls);
+            this.done();
+        });
+    },
+
+    testWorkerWithCallbackQueueCancel: function() {
+        var calls = [];
+        function worker(thenDo) {
+            calls.push("workerCalled");
+            setTimeout(function() { thenDo(null); }, 40);
+        }
+
+        function thenDo1(err, arg) { calls.push("thenDo1Called"); }
+        function thenDo2(err, arg) { calls.push("thenDo2Called"); }
+
+        var proc = Functions.workerWithCallbackQueue('testWorkerWithCallbackQueue', worker).whenDone(thenDo1);
+        proc.cancel();
+        setTimeout(function() { Functions.workerWithCallbackQueue('testWorkerWithCallbackQueue', worker).whenDone(thenDo2); }, 20);
+
+        this.delay(function() {
+            var expected = ['workerCalled', 'thenDo2Called'];
+            this.assertEquals(expected, calls);
+            this.done();
+        }, 120);
+    },
+
     testThrottleCommand: function() {
         var called = 0, result = [];
         Array.range(1,4).forEach(function(i) {
@@ -903,6 +1007,39 @@ AsyncTestCase.subclass('lively.lang.tests.ExtensionTests.Function',
                 this.done();
             });
         });
+    },
+
+    testComposeAsyncWithError: function() {
+        var test = this, aRun = 0, bRun = 0, cRun = 0;
+        Functions.composeAsync(
+            function a(a,b, thenDo) { aRun++; thenDo(null, (a*b).barrr()); },
+            function b(a, thenDo) { bRun++; thenDo(null, a + 1); }
+        )(3,4, function(err, result) {
+            cRun++;
+            test.assertEquals(1, aRun, 'aRun');
+            test.assertEquals(0, bRun, 'bRun');
+            test.assertEquals(1, cRun, 'cRun');
+            test.assert(!result, 'result? ' + result);
+            test.assert(err instanceof TypeError, 'error? ' + err);
+        });
+        this.waitFor(function() { return !!cRun; }, 10, function() { this.done(); });
+    },
+
+    testComposeAsyncWithErrorDontActivateTwice: function() {
+        var test = this, aRun = 0, bRun = 0, cRun = 0;
+        Functions.composeAsync(
+            function a(a,b, thenDo) { aRun++; thenDo(null, a * b);
+                throw new Error('afterthought'); /*throwing this error should not invoke the end handler*/},
+            function b(a, thenDo) { bRun++; thenDo(null, a + 1); }
+        )(4,5, function(err, result) {
+            cRun++;
+            test.assertEquals(1, aRun, 'aRun');
+            test.assertEquals(1, bRun, 'bRun');
+            test.assertEquals(1, cRun, 'cRun');
+            test.assertEquals(21, result, 'result? ' + result);
+            test.assert(!err, 'err? ' + err);
+        });
+        this.waitFor(function() { return !!cRun; }, 30, function() { this.done(); });
     },
 
     testFlip: function() {

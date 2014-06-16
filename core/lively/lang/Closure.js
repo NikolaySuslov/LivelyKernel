@@ -123,13 +123,31 @@ Object.subclass('lively.Closure',
         var src = closureVars.length > 0 ? 'var ' + closureVars.join(',') + ';\n' : '';
         if (specificSuperHandling) src += '(function superWrapperForClosure() { return ';
         src += '(' + funcSource + ')';
-
         if (specificSuperHandling) src += '.apply(this, [$super.bind(this)].concat(Array.from(arguments))) })';
+        if (lively.Config.get('loadRewrittenCode')) {
+            module('lively.ast.Rewriting').load(true);
+            var fnAst = lively.ast.acorn.parse(src),
+                rewrittenAst = lively.ast.Rewriting.rewrite(fnAst, lively.ast.Rewriting.getCurrentASTRegistry()),
+                retVal = rewrittenAst.body[0].block.body.last();
+
+            // FIXME: replace last ExpressionStatement with ReturnStatement
+            retVal.type = 'ReturnStatement';
+            retVal.argument = retVal.expression;
+            delete retVal.expression;
+
+            src = '(function() { ' + escodegen.generate(rewrittenAst) + '}).bind(this)();';
+        }
 
         try {
             var func = eval(src) || this.couldNotCreateFunc(src);
             this.addFuncProperties(func);
             this.originalFunc = func;
+            if (lively.Config.get('loadRewrittenCode')) {
+                func._cachedAst.source = funcSource;
+                // FIXME: adjust start and end of FunctionExpression (because of brackets)
+                func._cachedAst.start++;
+                func._cachedAst.end--;
+            }
             return func;
         } catch (e) {
             alert('Cannot create function ' + e + ' src: ' + src);

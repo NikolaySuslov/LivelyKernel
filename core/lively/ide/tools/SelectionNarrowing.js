@@ -11,8 +11,8 @@ lively.BuildSpec('lively.ide.tools.NarrowingList', {
 + "	box-shadow: 0 0 4px white, inset 0 0 5px white;\n"
 + "}\n"
 + ".tab-list-item span {\n"
-+ "	font-family: Verdana;\n"
-+ "	font-size: 11pt;\n"
++ "	font-family: Monaco, Consolas, monospace;\n"
++ "	font-size: 10pt;\n"
 + "	color: white !important;\n"
 + "	font-width: bold !important;\n"
 + "	text-shadow: none !important;\n"
@@ -53,6 +53,22 @@ lively.BuildSpec('lively.ide.tools.NarrowingList', {
         }
         return string;
     },
+
+    doFilter: function doFilter(candidates, input) {
+        var container = this;
+        // split input by spaces and turn each string ino a regexp
+        var regexps = input.split(' ')
+            .map(function(part) { try { return new RegExp(part, 'i'); } catch(e) { return null } })
+            .compact();
+        return {
+            filters: regexps,
+            filtered: candidates.select(function(ea) {
+                return regexps.all(function(re) {
+                    var string = container.candidateToString(ea);
+                    return string.match(re); }); }) 
+        }
+    },
+
     ensureItems: function ensureItems(length, layout) {
         var container = this;
         function createListItem(string, i) {
@@ -106,19 +122,12 @@ lively.BuildSpec('lively.ide.tools.NarrowingList', {
         }
         // -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
         // do filter operation
-        var list = state.allCandidates,
-            // split input by spaces and turn each string ino a regexp
-            regexps = state.filters = input.split(' ')
-                .map(function(part) { try { return new RegExp(part, 'i'); } catch(e) { return null } })
-                .compact(),
-            filteredList = list.select(function(ea) {
-                return regexps.all(function(re) {
-                    var string = container.candidateToString(ea);
-                    return string.match(re); }); });
-        var prevFiltered = state.filteredCandidates;
-        if (prevFiltered.equals(filteredList)) return;
+        var filterResult = container.doFilter(state.allCandidates, input),
+            prevFiltered = state.filteredCandidates;
+        state.filters = filterResult.filters;
+        if (prevFiltered.equals(filterResult.filtered)) return;
         state.previousCandidateProjection = null;
-        state.filteredCandidates = filteredList;
+        state.filteredCandidates = filterResult.filtered;
         this.selectN(0);
     },
     getListItems: function getListItems() {
@@ -129,7 +138,7 @@ lively.BuildSpec('lively.ide.tools.NarrowingList', {
     initLayout: function initLayout(noOfCandidates) {
         var visibleBounds = lively.morphic.World.current().visibleBounds(),
             layout = {
-                listItemHeight: 22,
+                listItemHeight: 20,
                 inputLineHeight: 18,
                 padding: 20,
                 // computed below:

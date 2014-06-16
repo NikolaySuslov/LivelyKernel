@@ -4,7 +4,7 @@ lively.morphic.Morph.subclass('lively.morphic.CanvasMorph',
 'settings', {
 
     defaultExtent: pt(300, 300)
-    
+
 },
 'canvas', {
 
@@ -27,6 +27,18 @@ lively.morphic.Morph.subclass('lively.morphic.CanvasMorph',
         var prevExtent = this.getExtent();
         $super(extent);
         this.renderContextDispatch('adaptCanvasSize', prevExtent, extent);
+    },
+
+    getCanvasExtent: function() {
+        var canvas = this.getContext().canvas;
+        return pt(canvas.width, canvas.height);
+    },
+
+    setCanvasExtent: function(ext) {
+        var canvas = this.getContext().canvas;
+        canvas.width = ext.x;
+        canvas.height = ext.y;
+        return ext;
     },
 
     clear: function() {
@@ -79,8 +91,9 @@ lively.morphic.Morph.subclass('lively.morphic.CanvasMorph',
     fromImageMorph: function(imgMorph) {
         var imgNode = imgMorph.renderContext().imgNode;
         var ext = pt(imgNode.naturalWidth, imgNode.naturalHeight);
-        this.setExtent(ext);
+        this.adaptCanvasSizeHTML(this.renderContext(), this.getExtent(), ext);
         this.getContext().drawImage(imgNode, 0,0);
+        this.setExtent(ext);
         return this;
     },
 
@@ -139,11 +152,13 @@ lively.morphic.Morph.subclass('lively.morphic.CanvasMorph',
         // accepts real image data object or simple array with rgba-quad-tuples
         var ctx = this.getContext();
         if (data.constructor === ImageData) {
-            ctx.putImageData(data, 0,0);
             var ext = this.getExtent();
             if (width === undefined || height === undefined) {
                 width = ext.x; height = ext.y;
             }
+            ctx.canvas.width = width;
+            ctx.canvas.height = height;
+            ctx.putImageData(data, 0,0);
             if (ext.x !== width || ext.y !== height) this.setExtent(pt(width,height));
         } else {
             var imgData = ctx.createImageData(width, height);
@@ -310,14 +325,12 @@ lively.morphic.Morph.subclass('lively.morphic.CanvasMorph',
         if (this._adaptCanvasSizeHTMLInProgress) return;
         this._adaptCanvasSizeHTMLInProgress = true;
         try {
-            var $node = lively.$(ctx.shapeNode),
-                x = $node.width(),
-                y = $node.height();
             if (oldExtent && newExtent && (oldExtent.x !== newExtent.x || oldExtent.y !== newExtent.y)) {
-                var imgData = this.getImageData();
-                $node.attr('width', x);
-                $node.attr('height', y);
-                this.putImageData(imgData, x, y);
+                var $node = lively.$(ctx.shapeNode),
+                    imgData = this.getImageData();
+                $node.attr('width', newExtent.x);
+                $node.attr('height', newExtent.y);
+                this.putImageData(imgData, newExtent.x, newExtent.y);
                 this.onCanvasChanged();
             }
         } finally {
@@ -767,7 +780,7 @@ lively.morphic.PathControlPointHalo.subclass('lively.morphic.PathVertexControlPo
                 this.align(this.bounds().center(),this.controlPoint.getGlobalPos())
             }
         }
-    
+
     },
 
     dragStartAction: function(evt) {
@@ -777,7 +790,7 @@ lively.morphic.PathControlPointHalo.subclass('lively.morphic.PathVertexControlPo
             this.magnetSet = new lively.morphic.MagnetSet(this.world());
             this.magnetSet.helperMorphs  = [];
         }
-    
+
     },
 
     dragEndAction: function(evt) {
@@ -794,7 +807,7 @@ lively.morphic.PathControlPointHalo.subclass('lively.morphic.PathVertexControlPo
         if (lively.Config.get('enableMagneticConnections') && this.magnetSet) {
             this.magnetSet.helperMorphs.invoke('remove');
             delete this.magnetSet;
-        }    
+        }
 
     },
 

@@ -266,7 +266,7 @@ Object.extend(Function.prototype, {
 
         var methodConnections = obj.attributeConnections ?
             obj.attributeConnections.filter(function(con) { return con.getSourceAttrName() === 'update'; }) : [];
-    
+
         methodConnections.invoke('disconnect');
         obj[name] = this;
 
@@ -532,8 +532,80 @@ Global.Functions = {
         return queue;
     },
 
+    workerWithCallbackQueue: function(id, workerFunc, optTimeout) {
+        // This functions helps when you have a long running computation that
+        // multiple call sites (independent from each other) depend on. This
+        // function does the houskeeping to start the long running computation
+        // just once and returns an object that allows to schedule callbacks
+        // once the workerFunc is done
+        // this is how it works:
+        // if id does not exist, workerFunc is called, otherwise ignored.
+        // workerFunc is expected to call thenDoFunc with arguments: error, arg1, ..., argN
+        // if called subsequently before workerFunc is done, the other thenDoFunc
+        // will "pile up" and called with the same arguments as the first
+        // thenDoFunc once workerFunc is done
+
+        var store = Functions._queueUntilCallbacks || (Functions._queueUntilCallbacks = {}),
+            queueCallbacks = store[id],
+            isRunning = !!queueCallbacks;
+
+        if (isRunning) return queueCallbacks;
+
+        var callbacksRun = false, canceled = false;
+        
+        function cleanup() {
+            if (timeoutProc) clearTimeout(timeoutProc);
+            callbacksRun = true;
+            delete store[id];
+        }
+
+        function runCallbacks(args) {
+            if (callbacksRun) return;
+            cleanup();
+            queueCallbacks.callbacks.forEach(function(cb) {
+                try { cb.apply(null, args); } catch (e) {
+                    console.error(
+                        "Error when invoking callbacks in queueUntil ["
+                       + id + "]:\n"
+                       + (String(e.stack || e)));
+                }
+            });
+        }
+
+        // timeout
+        if (optTimeout) {
+            var timeoutProc = setTimeout(function() {
+                if (callbacksRun) return;
+                runCallbacks([new Error("timeout")]);
+            }, optTimeout);
+        }
+
+        // init the store
+        queueCallbacks = store[id] = {
+            callbacks: [],
+            cancel: function() {
+                canceled = true;
+                cleanup();
+            },
+            whenDone: function(cb) {
+                queueCallbacks.callbacks.push(cb);
+                return queueCallbacks;
+            }
+        };
+
+        // call worker, but delay so we can immediately return
+        setTimeout(function() {
+            if (canceled) return;
+            try {
+                workerFunc(function(/*args*/) { runCallbacks(arguments); });
+            } catch (e) { runCallbacks([e]); }
+        }, 0);
+
+        return queueCallbacks;
+    },
+
     composeAsync: function(/*functions*/) {
-        // composes functions: Functions(f,g,h)(arg1, arg2) = 
+        // composes functions: Functions(f,g,h)(arg1, arg2) =
         //   f(arg1, arg2, thenDo1) -> thenDo1(err, fResult)
         // -> g(fResult, thenDo2) -> thenDo2(err, gResult) ->
         // -> h(fResult, thenDo3) -> thenDo2(err, hResult)
@@ -544,16 +616,22 @@ Global.Functions = {
         var functions = Array.from(arguments);
         var endCallback, intermediateResult;
         return functions.reverse().reduce(function(prevFunc, func) {
+            var nextActivated = false;
             return function() {
                 var args = Array.from(arguments);
                 if (!endCallback) endCallback = args.pop();
                 function next(/*err and args*/) {
+                    nextActivated = true;
                     var args = Array.from(arguments),
                         err = args.shift();
-                    if (err) endCallback(err);
+                    if (err) endCallback && endCallback(err);
                     else prevFunc.apply(null, args);
                 }
-                func.apply(Global, args.concat([next]));
+                try {
+                    func.apply(Global, args.concat([next]));
+                } catch (e) {
+                    console.error('composeAsync: ', e.stack || e);
+                    !nextActivated && endCallback && endCallback(e); }
             }
         }, function() { endCallback.apply(null, [null].concat(Array.from(arguments))); });
     },

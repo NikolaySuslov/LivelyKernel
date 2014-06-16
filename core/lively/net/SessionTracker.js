@@ -102,29 +102,29 @@ Object.subclass('lively.net.SessionTrackerConnection',
     },
 
     getSessions: function(cb, forceFresh) {
-        // if timeout specified throttle requests so that they happen at most
-        // timeout-often
+        var getSessionsTimeout = 3000;
         var to = this.getSessionsCacheInvalidationTimeout;
-        if (forceFresh) delete this._getSessionsCachedResult;
-        if (to && this._getSessionsCachedResult) {
+        var session = this;
+    
+        if (!forceFresh && to && this._getSessionsCachedResult) {
             cb && cb(this._getSessionsCachedResult); return; }
-        // -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-        // queue requests
-        var self = this;
-        if (!this._getSessionsQueue) this._getSessionsQueue = [];
-        this._getSessionsQueue.push(cb);
-        if (this._getSessionsInProgress) return;
-        // start request if currently no one ongoing
-        this._getSessionsInProgress = true;
-        this.sendTo(this.trackerId, 'getSessions', {}, function(msg) {
-            self._getSessionsInProgress = false;
-            var sessions = msg && msg.data; cb;
-            if (to) {
-                self._getSessionsCachedResult = sessions;
-                (function() { self._getSessionsCachedResult = null; }).delay(to/1000);
-            }
-            while ((cb = self._getSessionsQueue.shift())) cb && cb(sessions);
-        });
+    
+        function sendSessionsQuery(thenDo) {
+            session.sendTo(session.trackerId, 'getSessions', {}, function(msg) {
+                var sessions = msg && msg.data; cb;
+                if (to) {
+                    session._getSessionsCachedResult = sessions;
+                    (function() { session._getSessionsCachedResult = null; }).delay(to/1000);
+                }
+                thenDo(null, sessions);
+            });
+        }
+    
+        var proc = Functions.workerWithCallbackQueue(
+            session.sessionId + '-getSessions',
+            sendSessionsQuery, getSessionsTimeout);
+    
+        proc.whenDone(function(err, sessions) { cb(sessions); });
     },
 
     getUserInfo: function(thenDo) {
@@ -312,9 +312,11 @@ Object.extend(lively.net.SessionTracker, {
     _sessions: lively.net.SessionTracker._sessions || {},
 
     defaultActions: {
+
         reportServices: function(msg, session) {
             session.answer(msg, {services: Object.keys(session.getActions())});
         },
+
         remoteEvalRequest: function(msg, session) {
             var result;
             if (!Config.get('lively2livelyAllowRemoteEval')) {
@@ -329,6 +331,17 @@ Object.extend(lively.net.SessionTracker, {
             }
             session.answer(msg, {result: String(result)});
         },
+
+        completions: function(msg, session) {
+            lively.require('lively.ide.codeeditor.Completions').toRun(function() {
+                var lister = new lively.ide.codeeditor.Completions.ProtocolLister();
+                var completions = lister.getCompletions(
+                    msg.data.expr,
+                    function(string) { return eval(string); });
+                session.answer(msg, completions);
+            });
+        },
+
         copyObject: function(msg, session) {
             var obj, result = '', error = null, withObjectDo = msg.data.withObjectDo;
             try {
@@ -343,13 +356,15 @@ Object.extend(lively.net.SessionTracker, {
             }
             session.answer(msg, {result: String(result), error: error});
         },
+
         askFor: function(msg, session) {
             var query = msg.data.query,
-                promptMethod = query.toLowerCase().include('password') ? 'passwordPrompt' : 'prompt';
+                promptMethod = query.match(/password|sudo/i) ? 'passwordPrompt' : 'prompt';
             $world[promptMethod](query, function(input) {
                 session.answer(msg, {answer: input});
             });
         },
+
         chatMessage: function(msg, session) {
             lively.log('Got chat message from %s: %s', msg.data.user, msg.data.message);
             var chat = $morph('Lively2LivelyChat');
@@ -366,10 +381,12 @@ Object.extend(lively.net.SessionTracker, {
             }
             session.answer(msg, {message: 'chat message received', error: null});
         },
+
         messageNotUnderstood: function(msg, session) {
             show('Lively2Lively message not understood:\n%o', msg);
             session.answer(msg, {error: 'messageNotUnderstood'});
         }
+
     },
 
     registerActions: function(actions) {
@@ -399,6 +416,12 @@ Object.extend(lively.net.SessionTracker, {
         if (!this._onBrowserShutdown) {
             this._onBrowserShutdown = Global.addEventListener('beforeunload', function(evt) {
                 lively.net.SessionTracker.closeSessions();
+                // since this is also called when the user is just asked if she
+                // wants to navigate to another page, we might stay after all...
+                // re-establish the connection in those cases after a few seconds:
+                (function() {
+                    lively.net.SessionTracker.createSession();
+                }).bind(this).delay(10);
             }, true);
         }
         lively.bindings.signal(this, 'sessionCreated', s);
@@ -464,7 +487,7 @@ Object.extend(lively.net.SessionTracker, {
 Object.extend(lively.net.SessionTracker, {
     sessionLister: {
         withSessionListDo: function(session, doFunc, forceFresh) {
-            if (!session.isConnected()) { doFunc(new Error('Not connected'), []); return; }
+            if (!session || !session.isConnected()) { doFunc(new Error('Not connected'), []); return; }
             session.getSessions(function(remotes) {
                 var list = Object.keys(remotes).map(function(trackerId) {
                     return Object.keys(remotes[trackerId]).map(function(sessionId) {
