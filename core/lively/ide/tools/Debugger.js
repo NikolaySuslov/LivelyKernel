@@ -376,10 +376,11 @@ lively.BuildSpec('lively.ide.tools.Debugger', {
                     isMorphRef: true,
                     path: "submorphs.0"
                 },
-                createItem: function createItem(obj, property) {
-                var value = obj[property];
-                var item = {name: property, data: value, inspector: this, parent: obj};
+                createItem: function createItem(obj, property, style) {
+                var value = obj[property],
+                    item = {name: property, data: value, inspector: this, parent: obj};
                 item.description = this.describe(value);
+                if (style) item.style = style;
                 if (!this.isPrimitive(value)) {
                     item.children = [];
                     Object.addScript(item, function onExpand() { this.inspector.expand(this); });
@@ -441,7 +442,9 @@ lively.BuildSpec('lively.ide.tools.Debugger', {
                 if (item.children) item.children.each(function(i) { lookup[i.name] = i; });
                 item.children = [];
                 if (thiz !== undefined)
-                    item.children.push(this.createItem({ this: thiz }, 'this'));
+                    item.children.push(this.createItem({ this: thiz }, 'this', { italics: 'italic' }));
+                if (item.args !== undefined)
+                    item.children.push(this.createItem({ arguments: item.args }, 'arguments', { italics: 'italic' }));
                 props.each(function(prop) {
                     var existing = lookup[prop];
                     if (existing) {
@@ -470,6 +473,9 @@ lively.BuildSpec('lively.ide.tools.Debugger', {
                         data: frame.getScope(),
                         thiz: frame.getThis()
                     };
+                    try {
+                        this.tree.item.args = frame.getArguments();
+                    } catch (e) { /* might throw ReferenceError */ }
                     this.updateScope(this.tree.item);
                 } else { // frame unselected
                     this.tree.item = {
@@ -482,7 +488,12 @@ lively.BuildSpec('lively.ide.tools.Debugger', {
             }]
         }],
         browse: function browse() {
-        this.currentFrame && this.currentFrame.func.browse();
+        try {
+            this.currentFrame && this.currentFrame.func &&
+                this.currentFrame.func.browse(this.currentFrame.getThis());
+        } catch (e) {
+            alert(e.message);
+        }
     },
         reset: function reset() {
         this.doNotSerialize = ['topFrame', 'currentFrame'];
@@ -521,7 +532,7 @@ lively.BuildSpec('lively.ide.tools.Debugger', {
         var frames = [];
         var frame = topFrame;
         do {
-            var name = frame.func.name() || '(anonymous function)';
+            var name = this.getFunctionName(frame.func, frame.getThis());
             frames.push({
                 isListItem: true,
                 string: frame.isResuming() ? name : name + " [native]",
@@ -574,6 +585,25 @@ lively.BuildSpec('lively.ide.tools.Debugger', {
                 this.getWindow().setTitle(result.toString());
         } else
             this.setCurrentFrame(frame); // simple pc advancement
+    },
+        getFunctionName: function getFunctionName(func, obj) {
+            var fn = func.asFunction(),
+                name = '';
+            // TODO: use qualifiedMethodName instead?
+            if (fn.displayName) {
+                if (fn.declaredClass)
+                    name = fn.displayName.replace('$', ' >> ') + ' (proto)';
+                else if (lively.Class.isClass(obj))
+                    name = obj.name + ' >> ' + fn.displayName + ' (static)';
+                else
+                    name = fn.displayName;
+            } else if (func.name()) {
+                if (obj.isMorph)
+                    name = obj.getName() + '(' + obj.id + ') >> ';
+                name += func.name() + ' (script)';
+            } else
+                name = '(anonymous function)';
+            return name;
     }
     })],
     titleBar: "Debugger"

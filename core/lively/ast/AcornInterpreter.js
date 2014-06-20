@@ -18,7 +18,7 @@ Object.subclass('lively.ast.AcornInterpreter.Interpreter',
         this.breakAtCall      = false; // for e.g. step into
     },
 
-    statements: ['EmptyStatement', 'ExpressionStatement', 'IfStatement', 'LabeledStatement', 'BreakStatement', 'ContinueStatement', 'WithStatement', 'SwitchStatement', 'ReturnStatement', 'ThrowStatement', 'WhileStatement', 'DoWhileStatement', 'ForStatement', 'ForInStatement', 'DebuggerStatement', 'VariableDeclaration', 'FunctionDeclaration', 'SwitchCase'] // without BlockStatement
+    statements: ['EmptyStatement', 'ExpressionStatement', 'IfStatement', 'LabeledStatement', 'BreakStatement', 'ContinueStatement', 'WithStatement', 'SwitchStatement', 'ReturnStatement', 'ThrowStatement', 'WhileStatement', 'DoWhileStatement', 'ForStatement', 'ForInStatement', 'DebuggerStatement', 'VariableDeclaration', 'FunctionDeclaration', 'SwitchCase'] // without BlockStatement and TryStatement
 
 },
 'interface', {
@@ -144,6 +144,7 @@ Object.subclass('lively.ast.AcornInterpreter.Interpreter',
             recv = argValues.shift(); // thisObj is first parameter
             argValues = argValues[0]; // the second arg are the arguments (as an array)
         }
+        var origFunc = func;
 
         if (this.shouldHaltAtNextCall()) // try to fetch interpreted function
             func = this.fetchInterpretedFunction(func) || func;
@@ -160,7 +161,7 @@ Object.subclass('lively.ast.AcornInterpreter.Interpreter',
         }
         if (isNew) {
             if (this.isNative(func)) return new func();
-            recv = this.newObject(func);
+            recv = this.newObject(origFunc);
         }
 
         var result = func.apply(recv, argValues);
@@ -186,7 +187,7 @@ Object.subclass('lively.ast.AcornInterpreter.Interpreter',
 
     newObject: function(func) {
         var proto = func.prototype;
-        function constructor() {};
+        function constructor() {}
         constructor.prototype = proto;
         var newObj = new constructor();
         newObj.constructor = func;
@@ -287,7 +288,7 @@ Object.subclass('lively.ast.AcornInterpreter.Interpreter',
             topScope = newScope;
 
         // recreate lively.ast.AcornInterpreter.Function object
-        func = new lively.ast.AcornInterpreter.Function(func._cachedAst, topScope);
+        func = new lively.ast.AcornInterpreter.Function(func._cachedAst, topScope, func);
         return func.asFunction();
     }
 
@@ -1034,13 +1035,22 @@ Object.subclass('lively.ast.AcornInterpreter.Function',
             // TODO: reactivate when necessary
             // evaluatedSource: function() { return ...; },
             // custom Lively stuff
-            methodName: this.name(),
+            methodName: (optFunc && optFunc.methodName) || this.name(),
+            declaredClass: (optFunc && optFunc.declaredClass),
+            sourceModule: (optFunc && optFunc.sourceModule),
             argumentNames: function() {
                 return self.argNames();
             }
         });
+        if (fn.methodName && fn.declaredClass)
+            fn.displayName = fn.declaredClass + '$' + fn.methodName;
+        else if (optFunc && optFunc.displayName)
+            fn.displayName = optFunc.displayName;
 
-        // TODO: prepare more stuff from optFunc
+        if (optFunc) {
+            fn.prototype = optFunc.prototype;
+            // TODO: prepare more stuff from optFunc
+        }
         this._cachedFunction = fn;
     },
 },
@@ -1130,6 +1140,23 @@ Object.subclass('lively.ast.AcornInterpreter.Function',
 
     resume: function(frame) {
         return this.basicApply(frame);
+    }
+
+},
+'meta programming', {
+
+    browse: function(thisObject) {
+        var fn = this.asFunction();
+        if (fn.sourceModule && fn.methodName && fn.declaredClass) {
+            $world.browseCode(fn.declaredClass, fn.methodName, fn.sourceModule.name());
+        } else if (thisObject && lively.Class.isClass(thisObject) && fn.displayName) {
+            $world.browseCode(thisObject.name, fn.displayName, (fn.sourceModule || thisObject.sourceModule).name());
+        } else if (thisObject && thisObject.isMorph) {
+            var ed = $world.openObjectEditorFor(thisObject);
+            ed.targetMorph.get('ObjectEditorScriptList').setSelection(fn.methodName || this.name());
+        } else
+            //TODO: Add browse implementation for other functions
+            throw new Error('Cannot browse anonymous function ' + this);
     }
 
 });
