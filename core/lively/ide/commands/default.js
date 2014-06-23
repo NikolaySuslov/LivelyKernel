@@ -191,6 +191,21 @@ Object.extend(lively.ide.commands.byName, {
         },
     },
 
+    'lively.morphic.Morph.setGridSpacing': {
+        description: 'set grid spacing',
+        exec: function(spacing) {
+            if (spacing) lively.Config.set("gridSpacing", spacing);
+            else {
+                $world.prompt('Set grid spacing to', function(input) {
+                    var n = Number(input);
+                    if (!n || isNaN(n)) $world.inform('Not a valid input: "' + input + '"');
+                    lively.Config.set("gridSpacing", n);
+                }, lively.Config.get("gridSpacing"));
+            }
+            return true;
+        },
+    },
+
     // lists
     'lively.morphic.List.selectItem': {
         exec: function() {
@@ -270,6 +285,63 @@ Object.extend(lively.ide.commands.byName, {
             return true;
         }
     },
+
+    'lively.ide.resizeWindow': {
+        exec: function(how, window) {
+            var win = window || $world.getActiveWindow();
+            if (!win) return;
+
+            var worldB = $world.visibleBounds().insetBy(20),
+                winB = win.bounds(),
+                bounds = worldB;
+
+            if (!win.normalBounds) win.normalBounds = winB;
+
+            var thirdW = Math.max(660, bounds.width/3),
+                thirdColBounds = bounds.withWidth(thirdW);
+
+            if (!how) askForHow();
+            else doResize(how);
+
+            // -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+            function askForHow() {
+                var actions = ['fullscreen','center','right','left','bottom',
+                               'top',"shrinkWidth", "growWidth","shrinkHeight",
+                               "growHeight",'reset'];
+                lively.ide.tools.SelectionNarrowing.chooseOne(
+                    actions, function(err, candidate) { doResize(candidate); },
+                    {prompt: "How to resize the window?"});
+            }
+
+            function doResize(how) {
+                switch(how) {
+                    case 'fullscreen': break;
+                    case 'center': bounds = thirdColBounds.withCenter(worldB.center()); break;
+                    case 'right': bounds = thirdColBounds.withTopRight(worldB.topRight()); break;
+                    case 'left': bounds = thirdColBounds.withTopLeft(bounds.topLeft()); break;
+                    case 'bottom': bounds = bounds.withY(bounds.y + bounds.height/2);
+                    case 'top': bounds = bounds.withHeight(bounds.height/2); break;
+                    case 'reset': bounds = win.normalBounds || pt(500,400).extentAsRectangle().withCenter(bounds.center()); break;
+                    default: return;
+                }
+
+                if (how === 'reset') delete win.normalBounds;
+
+                win.setBounds(bounds);
+            }
+
+            return true;
+        },
+    },
+    'lively.ide.resizeWindow.reset': {exec: function() { return lively.ide.commands.exec('lively.ide.resizeWindow', 'reset'); }},
+    'lively.ide.resizeWindow.full': {exec: function() { return lively.ide.commands.exec('lively.ide.resizeWindow', 'fullscreen'); }},
+    'lively.ide.resizeWindow.left': {exec: function() { return lively.ide.commands.exec('lively.ide.resizeWindow', 'left'); }},
+    'lively.ide.resizeWindow.center': {exec: function() { return lively.ide.commands.exec('lively.ide.resizeWindow', 'center'); }},
+    'lively.ide.resizeWindow.right': {exec: function() { return lively.ide.commands.exec('lively.ide.resizeWindow', 'right'); }},
+    'lively.ide.resizeWindow.top': {exec: function() { return lively.ide.commands.exec('lively.ide.resizeWindow', 'top'); }},
+    'lively.ide.resizeWindow.bottom': {exec: function() { return lively.ide.commands.exec('lively.ide.resizeWindow', 'bottom'); }},
+
     'lively.morphic.Window.resizeVisibleMorphsToFitIntoVisibleBounds': {
         description: 'Resize visible morphs to fit into visible world bounds.',
         exec: function() {
@@ -312,6 +384,21 @@ Object.extend(lively.ide.commands.byName, {
             lively.ide.WindowNavigation.WindowManager.reset();
             lively.morphic.KeyboardDispatcher.reset();
             lively.ide.tools.SelectionNarrowing.resetCache();
+            return true;
+        },
+    },
+
+    'lively.ide.commands.keys.toggleShowPressedKeys': {
+        description: 'toggle show pressed keys',
+        exec: function() {
+            var inspector = $morph("KeyPressInspector");
+            if (inspector) inspector.remove();
+            else {
+                inspector = lively.PartsBin.getPart("KeyPressInspector", "PartsBin/Debugging/");
+                inspector.openInWorld();
+                inspector.align(inspector.bounds().bottomRight(), $world.visibleBounds().bottomRight());
+                inspector.enableFixedPositioning();
+            }
             return true;
         },
     },
@@ -449,6 +536,7 @@ Object.extend(lively.ide.commands.byName, {
                 {name: 'open in system browser', exec: function(candidate) { lively.ide.browse(URL.root.withFilename(candidate.relativePath)); }},
                 {name: 'open in text editor', exec: function(candidate) { lively.ide.openFile(candidate.fullPath); }},
                 {name: 'open in web browser', exec: function(candidate) { window.open(candidate.relativePath); }},
+                {name: 'open in versions viewer', exec: function(candidate) { lively.ide.commands.exec("lively.ide.openVersionsViewer", candidate.relativePath); }},
                 {name: 'reset directory watcher', exec: function(candidate) { lively.ide.DirectoryWatcher.reset(); }}];
             if (lively.ide.CommandLineInterface.rootDirectory) {
                 // SCB is currently only supported for Lively files
@@ -818,10 +906,86 @@ Object.extend(lively.ide.commands.byName, {
     },
     'lively.ide.openServerWorkspace': {description: 'open ServerWorkspace', isActive: lively.ide.commands.helper.noCodeEditorActive, exec: function() { $world.openServerWorkspace(); return true; }},
     'lively.ide.openShellWorkspace': {description: 'open ShellWorkspace', isActive: lively.ide.commands.helper.noCodeEditorActive, exec: function() { var codeEditor = $world.addCodeEditor({textMode: 'sh', theme: 'pastel_on_dark', title: 'Shell Workspace', content: "# You can evaluate shell commands in here\nls $PWD"}).getWindow().comeForward(); return true; }},
-    'lively.ide.openVersionsViewer': {description: 'open VersionsViewer', exec: function() { $world.openVersionViewer(); return true; }},
+    'lively.ide.openVersionsViewer': {description: 'open VersionsViewer', exec: function(path) { $world.openVersionViewer(path); return true; }},
     'lively.ide.openGitControl': {description: 'open GitControl', isActive: lively.ide.commands.helper.noCodeEditorActive, exec: function() { $world.openGitControl(); return true; }},
     'lively.ide.openServerLog': {description: 'open ServerLog', isActive: lively.ide.commands.helper.noCodeEditorActive, exec: function() { require('lively.ide.tools.ServerLog').toRun(function() { lively.ide.tools.ServerLog.open(); }); return true; }},
     'lively.ide.openDiffer': {description: 'open text differ', isActive: lively.ide.commands.helper.noCodeEditorActive, exec: function() { require('lively.ide.tools.Differ').toRun(function() { lively.BuildSpec('lively.ide.tools.Differ').createMorph().openInWorldCenter().comeForward(); }); return true; }},
+
+    'lively.ide.diffWorkspaces': {
+        description: 'diff workspaces',
+        exec: function(editor1, editor2) {
+
+            var editors;
+
+            Functions.composeAsync(
+                fetchEditorsIfRequired,
+                selectEditor1,
+                selectEditor2,
+                doDiff,
+                showDiff
+            )();
+
+            function fetchEditorsIfRequired(next) {
+                if (!editor1 || !editor2) editors = $world.withAllSubmorphsSelect(function(ea) {
+                    return ea.isCodeEditor && !ea.isCommandLine; }).reverse();
+                next(null);
+            }
+
+            function selectEditor1(next) {
+                if (editor1) next(null, editor1);
+                else selectMorph(editors, next);
+            }
+
+            function selectEditor2(editor1, next) {
+                if (editor2) next(null, editor1, editor2);
+                else selectMorph(editors.without(editor1), function(err, editor2) {
+                    next(err, editor1, editor2); });
+            }
+
+            function doDiff(ed1, ed2, next) {
+                var fn1 = ed1.getTargetFilePath() || 'no file',
+                    fn2 = ed2.getTargetFilePath() || 'no file';
+                var fn = fn1 === fn2 ? fn1 : fn1 + ' vs. ' + fn2;
+                lively.ide.diffNonInteractive(fn, ed1.textString, ed2.textString, function(err, diff) {
+                    next(err, fn, diff); });
+            }
+
+            function showDiff(fn, diff, next) {
+                lively.require('lively.ide.tools.Differ').toRun(function() {
+                    $world.addCodeEditor({
+                        title: "diff " + fn,
+                        content: diff,
+                        textMode: 'diff',
+                        extent: pt(700, 600)
+                    }).getWindow().comeForward();
+                    next();
+                })
+            }
+
+            function selectMorph(morphs, thenDo) {
+                var candidates = morphs.map(function(ea) {
+                    return {isListItem: true, value: ea, string: ea.name || String(ea)};
+                });
+                lively.ide.tools.SelectionNarrowing.getNarrower({
+                    name: 'lively.ide.diffWorkspaces',
+                    setup: function(narrower) { lively.bindings.connect(narrower, 'selection', Global, 'show'); },
+                    input: '',
+                    spec: {
+                        prompt: 'choose editor: ',
+                        candidates: candidates,
+                        actions: [function choose(morph) { thenDo(null, morph); }]
+                    }
+                });
+            }
+
+            // require('lively.ide.tools.Differ').toRun(function() {
+            //     lively.BuildSpec('lively.ide.tools.Differ').createMorph().openInWorldCenter().comeForward();
+            // });
+
+            return true;
+        }
+    },
+
     'lively.ide.openFileTree': {description: 'open file tree', isActive: lively.ide.commands.helper.noCodeEditorActive, exec: function() { $world.openFileTree(); return true; }},
     'lively.ide.openDirViewer': {
         description: 'open directory viewer',
@@ -978,6 +1142,18 @@ Object.extend(lively.ide.commands.byName, {
                             }, true);
                         }
                     }, {
+                        name: 'print infos',
+                        exec: function(candidate) {
+                            var s = narrower.state.originalState || narrower.state;
+                            var sessions = s.filteredCandidates.pluck('value');
+                            $world.addCodeEditor({
+                                title: "Info for l2l sessions",
+                                content: sessions.map(lively.net.tools.Functions.printSession).join('\n\n'),
+                                textMode: 'text',
+                                extent: pt(600, 500)
+                            }).getWindow().comeForward().openInWorldCenter();
+                        }
+                    }, {
                         name: 'show event logger',
                         exec: function(candidate) {
                             lively.net.tools.Functions.showEventLogger();
@@ -1039,6 +1215,13 @@ Object.extend(lively.ide.commands.defaultBindings, { // bind commands to default
     'lively.morphic.Morph.showSceneGraph': 'm-m',
     'lively.ide.evalJavaScript': 'm-s-:',
     'lively.ide.WindowNavigation.start': {mac: "cmd-`", win: "ctrl-à"},
+    'lively.ide.resizeWindow.reset': {mac: "cmd-s-l r e s q", win: "ctrl-s-l r e s q"},
+    'lively.ide.resizeWindow.full': {mac: "cmd-s-l r e s f", win: "ctrl-s-l r e s f"},
+    'lively.ide.resizeWindow.left': {mac: "cmd-s-l r e s l", win: "ctrl-s-l r e s l"},
+    'lively.ide.resizeWindow.center': {mac: "cmd-s-l r e s c", win: "ctrl-s-l r e s c"},
+    'lively.ide.resizeWindow.right': {mac: "cmd-s-l r e s r", win: "ctrl-s-l r e s r"},
+    'lively.ide.resizeWindow.top': {mac: "cmd-s-l r e s t", win: "ctrl-s-l r e s t"},
+    'lively.ide.resizeWindow.bottom': {mac: "cmd-s-l r e s b", win: "ctrl-s-l r e s b"},
     'lively.ide.browseFiles': 'Alt-t',
     'lively.ide.SystemCodeBrowser.browseModuleStructure': {mac: "m-s-t", win: 'm-s-t'},
     'lively.ide.commands.keys.reset': 'F8',

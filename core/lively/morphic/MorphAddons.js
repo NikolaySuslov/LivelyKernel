@@ -432,7 +432,7 @@ lively.morphic.Morph.addMethods(
 
     getGridPoint: function() {
         return this.owner && this.owner.layout && this.owner.layout.grid ?
-            this.owner.layout.grid : pt(10,10);
+            this.owner.layout.grid : pt(Config.get('gridSpacing'), Config.get('gridSpacing'));
     }
 
 },
@@ -990,8 +990,10 @@ lively.morphic.World.addMethods(
     setCurrentUser: function(username) {
         this.currentUser = username;
         lively.Config.set('UserName', username);
-        require('lively.net.SessionTracker').toRun(function() {
+        lively.require('lively.net.SessionTracker').toRun(function() {
             lively.net.SessionTracker.serverLogin();
+            var sess = lively.net.SessionTracker.getSession();
+            if (sess.isConnected()) { sess.setUserName(username); }
         });
     },
 

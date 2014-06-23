@@ -14,7 +14,9 @@ lively.ide.tests.CodeEditor.Base.subclass('lively.ide.tests.JumpChar',
                                    + "}\n";
             this.editor.setLineWrapping(false);
             this.editor.withAceDo(function(ed) {
-                lively.ide.codeeditor.JumpChar.setup(ed.getKeyboardHandler());
+                var kbd = ed.getKeyboardHandler();
+                lively.ide.codeeditor.JumpChar.setup(kbd);
+                self.cmd = kbd.platform === "mac" ? "Command" : "Control";
                 run.delay(0.1);
             });
         });
@@ -28,7 +30,7 @@ lively.ide.tests.CodeEditor.Base.subclass('lively.ide.tests.JumpChar',
             ed = codeEditor.aceEditor,
             kbd = ed.getKeyboardHandler();
         this.assert(!kbd.isJumpChar, 'already not installed?');
-        keys.simulateKey(ed, 'Command-J');
+        keys.simulateKey(ed, this.cmd + '-J');
         var kbd = ed.getKeyboardHandler();
         this.assert(!!kbd.isJumpChar, 'not installed?');
         this.done();
@@ -39,7 +41,7 @@ lively.ide.tests.CodeEditor.Base.subclass('lively.ide.tests.JumpChar',
             codeEditor = this.editor,
             ed = codeEditor.aceEditor;
         codeEditor.setCursorPosition(pt(0,0));
-        keys.simulateKey(ed, 'Command-J');
+        keys.simulateKey(ed, this.cmd + '-J');
         keys.simulateKey(ed, '{');
         var pos = codeEditor.getCursorPositionAce();
         this.assertMatches({column: 17, row: 0}, pos, 'pos');
@@ -51,7 +53,7 @@ lively.ide.tests.CodeEditor.Base.subclass('lively.ide.tests.JumpChar',
             codeEditor = this.editor,
             ed = codeEditor.aceEditor;
         codeEditor.setCursorPosition(pt(0,0));
-        keys.simulateKey(ed, 'Command-J');
+        keys.simulateKey(ed, this.cmd + '-J');
         keys.simulateKey(ed, 'l');
         
         var overlays, expected = [
@@ -78,7 +80,7 @@ lively.ide.tests.CodeEditor.Base.subclass('lively.ide.tests.JumpChar',
             codeEditor = this.editor,
             ed = codeEditor.aceEditor;
         codeEditor.setCursorPosition(pt(0,0));
-        keys.simulateKey(ed, 'Command-J');
+        keys.simulateKey(ed, this.cmd + '-J');
         keys.simulateKey(ed, 'l');
         keys.simulateKey(ed, 'b');
 
@@ -92,25 +94,26 @@ lively.ide.tests.CodeEditor.Base.subclass('lively.ide.tests.JumpChar',
         var keys = lively.ide.ace.require('ace/lib/keys'),
             codeEditor = this.editor,
             ed = codeEditor.aceEditor;
-        codeEditor.textString = Array.withN(10, Array.withN(80, 'a').join('')).join('\n')
+        codeEditor.setExtent(pt(400,300));
+        codeEditor.textString = Array.withN(10, Array.withN(50, 'a').join('')).join('\n')
         codeEditor.setCursorPosition(pt(0,0));
-        keys.simulateKey(ed, 'Command-J');
+        keys.simulateKey(ed, this.cmd + '-J');
         keys.simulateKey(ed, 'a');
         keys.simulateKey(ed, 'f');
 
-        var overlays, expected = Array.range(0,21).map(function(i) {
-            return {start: {row:1,column:30+i},text:String.fromCharCode('a'.charCodeAt(0)+i)};
+        var overlays, expected = Array.range(0,19).map(function(i) {
+            return {start: {row:2,column:0+i},text:String.fromCharCode('a'.charCodeAt(0)+i)};
         });
         
         codeEditor.withOverlaySupport(function($overlay, ed) {
             overlays = $overlay.overlays; });
-        this.assertEquals(expected.length, overlays.length, 'overlays.length');
+        this.assertEquals(20, overlays.length, 'overlays.length');
         this.assertMatches(expected, overlays, 'overlays');
 
         keys.simulateKey(ed, 'b');
 
         var pos = codeEditor.getCursorPositionAce();
-        this.assertEqualState({row: 1, column: 32}, pos, 'jump-to-pos');
+        this.assertEqualState({row: 2, column: 2}, pos, 'jump-to-pos');
         this.done();
     },
 
@@ -120,14 +123,14 @@ lively.ide.tests.CodeEditor.Base.subclass('lively.ide.tests.JumpChar',
             ed = codeEditor.aceEditor;
         codeEditor.textString = Array.withN(26, 'a').join('') + 'a\n' + Array.withN(25, 'a').join('');
 
-        keys.simulateKey(ed, 'Command-J');
+        keys.simulateKey(ed, this.cmd + '-J');
         keys.simulateKey(ed, 'a');
         keys.simulateKey(ed, 'n');
         keys.simulateKey(ed, 'b');
         var pos = codeEditor.getCursorPositionAce();
         this.assertEqualState({row: 1, column: 1}, pos, 'jump-to-pos');
 
-        keys.simulateKey(ed, 'Command-J');
+        keys.simulateKey(ed, this.cmd + '-J');
         keys.simulateKey(ed, 'a');
         keys.simulateKey(ed, 'm');
         keys.simulateKey(ed, 'b');

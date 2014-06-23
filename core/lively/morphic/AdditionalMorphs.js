@@ -158,12 +158,11 @@ lively.morphic.Morph.subclass('lively.morphic.CanvasMorph',
         sparseness = sparseness || 1;
         var d = this.getImageData();
         return Array.from(d.data).toTuples(4).toTuples(d.width).reduce(function(rows, row, j) {
-            if (j % sparseness !== 0) return rows;
-            return rows.concat(row.reduce(function(posAndColors, color, i) {
+            return j % sparseness === 0 ? rows.concat(row.reduce(function(posAndColors, color, i) {
                 return i % sparseness === 0 ?
                     posAndColors.concat([[pt(i,j), Color.fromTuple8Bit(color)]]) :
                     posAndColors;
-                }, []));
+                }, [])) : rows;
         }, []);
     }
 
@@ -1180,7 +1179,7 @@ lively.morphic.Morph.subclass('lively.morphic.Flap',
 'initialization', {
     initialize: function($super) {
         $super(this.defaultShape());
-        var args = $A(arguments)
+        var args = Array.from(arguments)
         args.shift()
         this.init.apply(this, args);
     },

@@ -352,7 +352,7 @@ Object.subclass("lively.ast.MozillaAST.BaseVisitor",
         var retVal;
         node.elements.forEach(function(ea, i) {
             if (ea) {
-                // ea can be of type Expression or 
+                // ea can be of type Expression or
                 retVal = this.accept(ea, depth, state, path.concat(["elements", i]));
             }
         }, this);
@@ -639,7 +639,7 @@ Object.subclass("lively.ast.MozillaAST.BaseVisitor",
         var retVal;
         node.elements.forEach(function(ea, i) {
             if (ea) {
-                // ea can be of type Pattern or 
+                // ea can be of type Pattern or
                 retVal = this.accept(ea, depth, state, path.concat(["elements", i]));
             }
         }, this);
@@ -797,14 +797,14 @@ lively.ast.MozillaAST.BaseVisitor.subclass("lively.ast.ComparisonVisitor",
 
     visitVariableDeclaration: function($super, node1, node2, state, path) {
         // node1.kind is "var" or "let" or "const"
-        this.compareField("kind", node1, node2, state); 
+        this.compareField("kind", node1, node2, state);
         $super(node1, node2, state, path);
     },
 
     visitUnaryExpression: function($super, node1, node2, state, path) {
         // node1.operator is an UnaryOperator enum:
         // "-" | "+" | "!" | "~" | "typeof" | "void" | "delete"
-        this.compareField("operator", node1, node2, state); 
+        this.compareField("operator", node1, node2, state);
 
         // node1.prefix has a specific type that is boolean
         if (node1.prefix) { this.compareField("prefix", node1, node2, state); }
@@ -815,21 +815,21 @@ lively.ast.MozillaAST.BaseVisitor.subclass("lively.ast.ComparisonVisitor",
     visitBinaryExpression: function($super, node1, node2, state, path) {
         // node1.operator is an BinaryOperator enum:
         // "==" | "!=" | "===" | "!==" | | "<" | "<=" | ">" | ">=" | | "<<" | ">>" | ">>>" | | "+" | "-" | "*" | "/" | "%" | | "|" | "^" | "&" | "in" | | "instanceof" | ".."
-        this.compareField("operator", node1, node2, state); 
+        this.compareField("operator", node1, node2, state);
         $super(node1, node2, state, path);
     },
 
     visitAssignmentExpression: function($super, node1, node2, state, path) {
         // node1.operator is an AssignmentOperator enum:
         // "=" | "+=" | "-=" | "*=" | "/=" | "%=" | | "<<=" | ">>=" | ">>>=" | | "|=" | "^=" | "&="
-        this.compareField("operator", node1, node2, state); 
+        this.compareField("operator", node1, node2, state);
         $super(node1, node2, state, path);
     },
 
     visitUpdateExpression: function($super, node1, node2, state, path) {
         // node1.operator is an UpdateOperator enum:
         // "++" | "--"
-        this.compareField("operator", node1, node2, state); 
+        this.compareField("operator", node1, node2, state);
         // node1.prefix has a specific type that is boolean
         if (node1.prefix) { this.compareField("prefix", node1, node2, state); }
         $super(node1, node2, state, path);
@@ -838,7 +838,7 @@ lively.ast.MozillaAST.BaseVisitor.subclass("lively.ast.ComparisonVisitor",
     visitLogicalExpression: function($super, node1, node2, state, path) {
         // node1.operator is an LogicalOperator enum:
         // "||" | "&&"
-        this.compareField("operator", node1, node2, state); 
+        this.compareField("operator", node1, node2, state);
         $super(node1, node2, state, path);
     },
 
@@ -856,12 +856,12 @@ lively.ast.MozillaAST.BaseVisitor.subclass("lively.ast.ComparisonVisitor",
 
     visitIdentifier: function($super, node1, node2, state, path) {
         // node1.name has a specific type that is string
-        this.compareField("name", node1, node2, state); 
+        this.compareField("name", node1, node2, state);
         $super(node1, node2, state, path);
     },
 
     visitLiteral: function($super, node1, node2, state, path) {
-        this.compareField("value", node1, node2, state); 
+        this.compareField("value", node1, node2, state);
         $super(node1, node2, state, path);
     }
 });
@@ -876,11 +876,11 @@ Object.extend(lively.ast.acorn, {
         // state -- state variable that is passed along
         var vis = new lively.ast.MozillaAST.BaseVisitor(),
             origAccept = vis.accept;
-        vis.accept = function(node, st) {
-            var next = function() { origAccept.call(vis, node, st); }
-            return func(next, node, st);
+        vis.accept = function(node, depth, st, path) {
+            var next = function() { origAccept.call(vis, node, depth, st, path); }
+            return func(next, node, st, depth, path);
         }
-        return vis.accept(ast, state);
+        return vis.accept(ast, 0, state, []);
     },
 
     printAst: function(astOrSource, options) {
@@ -902,7 +902,7 @@ Object.extend(lively.ast.acorn, {
             }
             acorn.walk.addSource(ast, source);
         }
-        
+
         function printFunc(ea) {
             var string = ea.path + ':' + ea.node.type, additional = [];
             if (printIndex) { additional.push(ea.index); }
@@ -963,12 +963,16 @@ Object.extend(lively.ast.acorn, {
         }
 
         visitor.accept(ast2);
+    },
+
+    stringify: function(ast, options) {
+        return escodegen.generate(ast, options)
     }
 
 });
 
 (function extendAcornWalk() {
-    
+
     acorn.walk.findNodeByAstIndex = function(ast, astIndexToFind, addIndex) {
         addIndex = addIndex == null ? true : !!addIndex;
         if (!ast.astIndex && addIndex) acorn.walk.addAstIndex(ast);
@@ -1019,5 +1023,181 @@ Object.extend(lively.ast.acorn, {
         return ast;
     };
 
+
 })();
+
+(function setupASTHelper() {
+    lively.ast.query = {};
+    lively.ast.transform = {};
+})();
+
+Object.extend(lively.ast.query, {
+
+    scopesAtPos: function(pos, ast) {
+        return lively.ast.acorn.nodesAt(pos, ast).filter(function(node) {
+            return node.type === 'Program'
+                || node.type === 'FunctionDeclaration'
+                || node.type === 'FunctionExpression'
+        });
+    },
+
+    nodesInScopeOf: function(node) {
+        return lively.ast.acorn.withMozillaAstDo(node, {root: node, result: []}, function(next, node, state) {
+            state.result.push(node);
+            if (node !== state.root
+            && (node.type === 'Program'
+             || node.type === 'FunctionDeclaration'
+             || node.type === 'FunctionExpression')) return state;
+            next();
+            return state;
+        }).result;
+    },
+
+    declsAt: function(pos, ast) {
+        var scopes = lively.ast.query.scopesAtPos(pos, ast).map(function(scopeNode) {
+            return {
+                scope: scopeNode,
+                decls: lively.ast.query.nodesInScopeOf(scopeNode).filter(function(node) {
+                    return node.type === 'FunctionDeclaration'
+                        || node.type === 'VariableDeclaration';
+                })
+            }
+        }, this)
+
+        return scopes.pluck('decls').flatten().uniq();
+    },
+
+    topLevelDecls: function(ast) {
+        return lively.ast.query.declsAt(ast.end, ast);
+    }
+
+});
+
+Object.extend(lively.ast.transform, {
+
+    replaceNode: function(ast, targetNode, transformedNode) {
+        var pathToNode, hasAstIndex = !!targetNode.astIndex;
+        lively.ast.acorn.withMozillaAstDo(ast, {}, function(next, node, state, depth, path) {
+            if (pathToNode) return; // already found
+            if (node === targetNode || (hasAstIndex && node.astIndex === targetNode.astIndex)) pathToNode = path;
+            else next();
+        });
+
+        if (!pathToNode)
+            throw new Error(
+                Strings.format("cannot find path to node %o\n%s", targetNode, lively.printStack()));
+
+        var copy = acorn.walk.copy(ast);
+        lively.PropertyPath(pathToNode).set(copy, transformedNode);
+        return copy;
+    },
+
+    replaceNodeWithMany: function(ast, targetNode, replacementNodes) {
+        var targetStatement = acorn.walk.findStatementOfNode(ast, targetNode);
+
+        var pathToNode;
+        lively.ast.acorn.withMozillaAstDo(ast, {}, function(next, node, state, depth, path) {
+            if (pathToNode) return; // already found
+            else if (node === targetStatement) pathToNode = path;
+            else next();
+        });
+
+        if (!pathToNode) return ast;
+
+        var copy = acorn.walk.copy(ast);
+        var block = lively.PropertyPath(pathToNode.slice(0,-1)).get(copy);
+        block.splice.apply(block, [pathToNode.last(), 1].concat(replacementNodes));
+
+        return copy;
+    },
+
+    replaceTopLevelVarDeclsWithAssignment: function(ast, assignToObj) {
+        // replaces var and function declarations with assignment statements.
+        // Example:
+        //    ast = lively.ast.acorn.parse("var x = 3, y = 2");
+        //    ast2 = lively.ast.transform.replaceTopLevelVarDeclsWithAssignment(ast, {name: "A", type: "Identifier"});
+        //    src = lively.ast.acorn.stringify(ast2); // => "A.x = 3; A.y = 2;"
+
+        // transform "var x = 3, y = 2;" into "var x = 3; var y = 2;"
+        ast = lively.ast.transform.oneDeclaratorPerVarDecl(ast);
+
+        var decls = lively.ast.query.topLevelDecls(ast);
+
+        return acorn.walk.copy(ast, {
+        
+            FunctionDeclaration: function(n, c) {
+                return decls.include(n) ?
+                    assign(n.id, Object.extend(acorn.walk.copy(n), {type: "FunctionExpression"})) :
+                    {
+                        start: n.start, end: n.end, type: 'FunctionDeclaration',
+                        id: c(n.id), params: n.params.map(c), body: c(n.body),
+                        source: n.source, astIndex: n.astIndex
+                    };
+            },
+            
+            VariableDeclaration: function(n, c) {
+                return decls.include(n) ?
+                    assign(n.declarations[0].id, n.declarations[0].init) :
+                    {
+                        start: n.start, end: n.end, type: 'VariableDeclaration',
+                        declarations: n.declarations.map(c), kind: n.kind,
+                        source: n.source, astIndex: n.astIndex
+                    };
+            }
+        
+        });
+
+        function assign(id, value) {
+            return {
+              type: "ExpressionStatement", expression: {
+                type: "AssignmentExpression", operator: "=",
+                right: value,
+                left: {
+                    type: "MemberExpression", computed: false,
+                    object: assignToObj, property: id
+                }
+              }
+            }
+        }
+    },
+
+    oneDeclaratorPerVarDecl: function(ast) {
+        // ast=lively.ast.acorn.parse(that.textString)
+        
+        var decls = [];
+        lively.ast.acorn.withMozillaAstDo(ast, {}, function(next, node, state, depth, path) {
+            if (node.type === "VariableDeclaration") decls.push(node);
+            next();
+        });
+
+        var replacements = decls.map(function(decl) {
+            return {
+                decl: decl,
+                replacement: decl.declarations.map(function(ea) {
+                    return {type: "VariableDeclaration", kind: "var", declarations: [ea]}
+                })
+            };
+        })
+
+        return replacements.reduce(function(ast, r) {
+            return lively.ast.transform.replaceNodeWithMany(ast, r.decl, r.replacement)
+        }, acorn.walk.copy(acorn.walk.addAstIndex(ast)));
+        
+    },
+
+    returnLastStatement: function(source) {
+        // lively.ast.transformReturnLastStatement('foo + 3;\n this.baz(99 * 3) + 4;')
+        // source = that.getTextRange()
+        var ast = lively.ast.acorn.parse(source),
+            last = ast.body.pop(),
+            newLastsource = 'return ' + source.slice(last.start, last.end),
+            newLast = lively.ast.acorn.fuzzyParse(newLastsource).body.last(),
+            newSource = source.slice(0, last.start) + 'return ' + source.slice(last.start)
+        ast.body.push(newLast);
+        ast.end += 'return '.length
+        return newSource.slice(ast.start, ast.end);
+    }
+
+});
+
 }) // end of module

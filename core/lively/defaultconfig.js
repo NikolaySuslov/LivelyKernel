@@ -396,10 +396,11 @@ Config.addOptions(
     ["changeLocationOnSaveWorldAs", false],
     ["showWorldSave", true],
 
-    ["alignToGridSpace", 10, "determins the pixels to snap to during shift dragging with mouse"],
+    ["gridSpacing", 10, "determins the pixels to snap to alt-dragging the drag halo"],
 
     // Tests
     ["serverInvokedTest", false],
+    ["serverTestDebug", false],
 
     // Modules
     ["moduleLoadTestTimeout", 10*1000, "Timeout in ms after which to run a module load check. Make it falsy to disable the check."],
@@ -494,7 +495,7 @@ Config.addOptions(
     ['aceDefaultEnableAutocompletion', true, "Should autocompletion be enabled?"],
     ['computeCodeEditorCompletionsOnStartup', true, 'when enabled all JS files udner core/ are read on startup nd their content is used to compute word completions'],
     ['showDoitErrorMessages', true, "When a doit eval results in an error a error message pops up."],
-    ['improvedJavaScriptEval', false, "Eval that changes semantics of how object literals and if statements are evaluated."]
+    ['improvedJavaScriptEval', true, "Eval that changes semantics of how object literals and if statements are evaluated."]
 ],
 
 'lively.ide.Search', [
@@ -527,7 +528,9 @@ Config.addOptions(
     ["lively2livelyCentral", "http://lively-web.org/nodejs/SessionTracker/", 'Central server to connect to for inter-realm Lively-to-Lively connections. Nullify to deactivate.'],
     ["lively2livelyAllowRemoteEval", true, 'Allow eval actions from other Lively worlds.'],
     ["lively2livelyEnableConnectionIndicator", true, 'Show a morph that indicates whether lively2lively is running and which provides access to collab actions.'],
-    ["lively2livelyInformAboutReceivedMessages", true, 'Visually log when receiving a lively2lively message.']
+    ["lively2livelyInformAboutReceivedMessages", true, 'Visually log when receiving a lively2lively message.'],
+    ["lively2livelyTrackerHeartbeatInterval", 30*1000, 'In milliseconds. Ensure staying connected to the tracker by sending regular heartbeats. Change to undefined to disable heartbeats.'],
+    ["lively2livelyLogHeartbeatRoundtripTime", false, 'Logging heartbeat.']
 ],
 
 "Wiki", [

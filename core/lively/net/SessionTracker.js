@@ -8,6 +8,7 @@ Object.subclass('lively.net.SessionTrackerConnection',
         this.sessionTrackerURL = options.sessionTrackerURL;
         this.username = options.username;
         this._status = 'disconnected';
+        this._heartbeatProcess = null;
         this.registerTimeout = options.registerTimeout || 60*1000; // ms
         this.activityTimeReportDelay = options.activityTimeReportDelay || 20*1000; // ms
         // a value other than null will enable session caching, i.e.
@@ -42,6 +43,7 @@ Object.subclass('lively.net.SessionTrackerConnection',
     },
 
     resetConnection: function() {
+        this.stopHeartbeat();
         this._status = 'disconnected';
         var ws = this.webSocket;
         if (!ws) return;
@@ -49,6 +51,12 @@ Object.subclass('lively.net.SessionTrackerConnection',
         lively.bindings.disconnect(ws, 'error', this, 'connectionError');
         ws.close();
         this.webSocket = null;
+    },
+
+    restart: function(cb) {
+        this.resetConnection();
+        cb && this.whenOnline(function() { cb(); });
+        this.register();
     },
 
     send: function(action, jso, callback) {
@@ -97,6 +105,7 @@ Object.subclass('lively.net.SessionTrackerConnection',
 
 },
 'server management', {
+
     resetServer: function() {
         return this.getWebResource('reset').beSync().post('reset').content;
     },
@@ -123,8 +132,13 @@ Object.subclass('lively.net.SessionTrackerConnection',
         var proc = Functions.workerWithCallbackQueue(
             session.sessionId + '-getSessions',
             sendSessionsQuery, getSessionsTimeout);
-    
-        proc.whenDone(function(err, sessions) { cb(sessions); });
+
+        proc.whenDone(function(err, sessions) { cb(sessions || {}); });
+    },
+
+    setUserName: function(username) {
+        this.username = username;
+        this.whenOnline(function() { this.register(); }.bind(this));
     },
 
     getUserInfo: function(thenDo) {
@@ -148,6 +162,47 @@ Object.subclass('lively.net.SessionTrackerConnection',
             }
             thenDo(result);
         });
+    },
+
+    stopHeartbeat: function() {
+        if (this._heartbeatProcess) Global.clearInterval(this._heartbeatProcess);
+    },
+
+    ensureHeartbeatProcess: function() {
+        var interval = lively.Config.get("lively2livelyTrackerHeartbeatInterval");
+        if (!interval) return;
+        this.stopHeartbeat();
+        var session = this;
+        this._heartbeatProcess = Global.setInterval(function() {
+            session.sendHeartbeat(function(err, roundtripTime) {
+                if (err) console.error("%s heartbeat error: %s", session, err);
+                lively.Config.get("lively2livelyLogHeartbeatRoundtripTime") && console.log("l2l heartbeat roundtrip time %s ms", roundtripTime);
+            });
+        }, interval);
+    },
+
+    sendHeartbeat: function(thenDo) {
+        var session = this;
+        var heartbeatTimeout = 3000;
+
+        function sendHeartbeat(thenDo) {
+            var startTime = Date.now();
+            session.sendTo(session.trackerId, 'heartbeat', {}, function(msg) {
+                thenDo(msg.data.error ? msg.data.error : null, Date.now() - startTime);
+            });
+        }
+
+        var proc = Functions.workerWithCallbackQueue(
+            session.sessionId + '-heartbeat',
+            sendHeartbeat, heartbeatTimeout);
+
+        proc.whenDone(function(err, responseTime) {
+            if (err && err.message === 'timeout') session.restart(function() {
+                session.sendHeartbeat(thenDo); })
+            else if (err) thenDo(err, null);
+            else thenDo(null, responseTime);
+        });
+
     }
 
 },
@@ -173,7 +228,7 @@ Object.subclass('lively.net.SessionTrackerConnection',
 
     connectionClosed: function() {
         if (this.sessionId && this.status() === 'connected') { this._status = 'connecting'; this.register(); }
-        else { this._status = 'disconnected'; lively.bindings.signal(this, 'closed', this); }
+        else { this._status = 'disconnected'; this.stopHeartbeat(); lively.bindings.signal(this, 'closed', this); }
         console.log('%s closed', this.toString(true));
     },
 
@@ -196,6 +251,7 @@ Object.subclass('lively.net.SessionTrackerConnection',
         actions && (this.actions = actions);
         this.whenOnline(this.listen.bind(this));
         this.whenOnline(this.ensureServerToServerConnection.bind(this));
+        this.whenOnline(this.ensureHeartbeatProcess.bind(this));
         this.send('registerClient', {
             id: this.sessionId,
             worldURL: URL.source.toString(),
@@ -504,14 +560,15 @@ Object.extend(lively.net.SessionTracker, {
 (function setupSessionTrackerConnection() {
     if (UserAgent.isNodejs || UserAgent.isWorker) return;
     lively.whenLoaded(function(world) {
-        if (!Config.get('lively2livelyAutoStart')) return;
+        if (!lively.Config.get('lively2livelyAutoStart')) return;
         // -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
         // 1) connect to tracker
-        var session = lively.net.SessionTracker.resetSession();
+        console.log('setupSessionTrackerConnection');
+        lively.net.SessionTracker.resetSession();
         // -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
         // start UI
-        if (Config.get('lively2livelyEnableConnectionIndicator')) {
-            require('lively.net.tools.Lively2Lively').toRun(function() {
+        if (lively.Config.get('lively2livelyEnableConnectionIndicator')) {
+            lively.require('lively.net.tools.Lively2Lively').toRun(function() {
                 if (world.get('Lively2LivelyStatus')) world.get('Lively2LivelyStatus').remove();
                 lively.BuildSpec('lively.net.tools.ConnectionIndicator').createMorph();
             });

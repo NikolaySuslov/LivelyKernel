@@ -723,6 +723,14 @@ lively.morphic.Morph.subclass('lively.morphic.CodeEditor',
                     return interpreter.runWithContext(ast, ctx, Global);
                 }
             };
+
+        if (lively.Config.get('improvedJavaScriptEval')) {
+            var ast = lively.ast.acorn.parse(__evalStatement);
+            var subst = {name: "Global", type: "Identifier"};
+            var transformed = lively.ast.transform.replaceTopLevelVarDeclsWithAssignment(ast, subst);
+            __evalStatement = lively.ast.acorn.stringify(transformed);
+        }
+
         try {
             var result = !lively.Config.get('loadRewrittenCode') ? interactiveEval.call(ctx) : interactiveDebugEval(ctx);
             if (Config.changesetsExperiment && $world.getUserName() &&
@@ -1515,8 +1523,18 @@ lively.morphic.Morph.subclass('lively.morphic.CodeEditor',
         // a codeeditor can target a file. This method figures out if the
         // current one does
         var win = this.getWindow();
-        if (!win || !win.getLocation) return null;
-        return win.getLocation(true);
+        if (!win) return null;
+
+        // text editor 
+        if (win.getLocation) return win.getLocation(true);
+
+        // SCB
+        if (win.targetMorph && win.targetMorph.ownerWidget && win.targetMorph.ownerWidget.isSystemBrowser) {
+            var mod = win.targetMorph.ownerWidget.getSelectedModule();
+            if (mod) return String(mod.uri());
+        }
+
+        return null;
     }
 });
 
