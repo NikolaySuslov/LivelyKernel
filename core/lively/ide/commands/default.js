@@ -770,7 +770,9 @@ Object.extend(lively.ide.commands.byName, {
         exec: function(codeEditor, args) {
             Global.event.stop();
             var insertResult = !args || typeof args.insert === 'undefined' || !!args.insert,
-                openInWindow = !codeEditor || (args && args.count !== 4)/*universal argument*/;
+                openInWindow = !codeEditor || (args && args.count !== 4)/*universal argument*/,
+                addToHistory = args && args.addToHistory,
+                group = (args && args.group) || 'interactive-shell-command';
             function ensureCodeEditor(title) {
                 if (!openInWindow && codeEditor && codeEditor.isCodeEditor) return codeEditor;
                 var ed = $world.addCodeEditor({
@@ -781,7 +783,7 @@ Object.extend(lively.ide.commands.byName, {
                 return ed;
             }
             function runCommand(command) {
-                lively.shell.exec(command, function(cmd) {
+                lively.shell.run(command, {addToHistory: addToHistory, group: group}, function(cmd) {
                     insertResult && ensureCodeEditor(command).printObject(null, cmd.resultString(true));
                 });
             }
@@ -880,6 +882,14 @@ Object.extend(lively.ide.commands.byName, {
         }
     },
 
+    'lively.ide.CommandLineInterface.showShellCommandHistory': {
+        description: "show shell command history",
+        exec: function() {
+            lively.ide.CommandLineInterface.history.showHistory();
+            return true;
+        }
+    },
+
     // tools
     'lively.ide.openWorkspace': {description: 'open Workspace', isActive: lively.ide.commands.helper.noCodeEditorActive, exec: function() { $world.openWorkspace(); return true; }},
     'lively.ide.openSystemCodeBrowser': {description: 'open SystemCodeBrowser', isActive: lively.ide.commands.helper.noCodeEditorActive, exec: function() { $world.openSystemBrowser(); return true; }},
@@ -888,7 +898,7 @@ Object.extend(lively.ide.commands.byName, {
     'lively.ide.openWorldCSSEditor': {description: 'open CSS Editor', isActive: lively.ide.commands.helper.noCodeEditorActive, exec: function() { $world.openWorldCSSEditor(); return true; }},
     'lively.ide.openTestRunner': {description: 'open TestRunner', isActive: lively.ide.commands.helper.noCodeEditorActive, exec: function() { $world.openTestRunner(); return true; }},
     'lively.ide.openMethodFinder': {description: 'open MethodFinder', isActive: lively.ide.commands.helper.noCodeEditorActive, exec: function() { $world.openReferencingMethodFinder(); return true; }},
-    'lively.ide.openTextEditor': {description: 'open TextEditor', isActive: lively.ide.commands.helper.noCodeEditorActive, exec: function() { lively.ide.openFile(URL.source.toString()); return true; }},
+    'lively.ide.openTextEditor': {description: 'open TextEditor', isActive: lively.ide.commands.helper.noCodeEditorActive, exec: function(path) { lively.ide.openFile(path || URL.source.toString()); return true; }},
     'lively.ide.openSystemConsole': {description: 'open SystemConsole', isActive: lively.ide.commands.helper.noCodeEditorActive, exec: function() { $world.openSystemConsole(); return true; }},
     'lively.ide.openOMetaWorkspace': {description: 'open OMetaWorkspace', isActive: lively.ide.commands.helper.noCodeEditorActive, exec: function() { $world.openOMetaWorkspace(); return true; }},
     'lively.ide.openSubserverViewer': {
@@ -987,16 +997,123 @@ Object.extend(lively.ide.commands.byName, {
     },
 
     'lively.ide.openFileTree': {description: 'open file tree', isActive: lively.ide.commands.helper.noCodeEditorActive, exec: function() { $world.openFileTree(); return true; }},
+
+    'lively.ide.openASTEditor': {
+        description: 'open AST editor',
+        exec: function(codeEditor) {
+            if (!codeEditor) {
+                var focused = lively.morphic.Morph.focusedMorph();
+                if (focused && focused.isCodeEditor) codeEditor = focused;
+            }
+            lively.require('lively.ide.tools.ASTEditor').toRun(function() {
+                lively.ide.tools.ASTEditor.openOn(codeEditor);
+            });
+            return true;
+        }
+    },
+
     'lively.ide.openDirViewer': {
         description: 'open directory viewer',
         isActive: Functions.True,
-        exec: function() {
+        exec: function(path) {
             require('lively.ide.tools.DirViewer').toRun(function() {
-                lively.BuildSpec('lively.ide.tools.DirViewer').createMorph().openInWorldCenter().comeForward();
+                lively.ide.tools.DirViewer.on(path);
             });
         }
     },
+
+    'lively.ide.findFile': {
+        'description': 'find file',
+        exec: function() {
+
+            // This is the emacs "find-file" equivalent.
+            // Lists all the files at the current dir defined by
+            // lively.ide.CommandLineInterface.cwd().
+            // On input filters files of current dir. Input can include path parts like
+            // "../" or "apps/". This allows to navigate through directory structures.
+            // The input after the last "/" is used to filter the file list. If enter is
+            // pressed and the input after the "/" does not match a file or dir a text editor
+            // is opened on that (non-existing) path, allowing to create a file on demand.
+
+            var candidates, narrower, dir, searchDir, slash = '/';
+
+            function splitInput(input) {
+                // split input in basedir and filename
+                var inputParts = input.split(slash),
+                    filePattern = inputParts.pop();
+                return {dir: inputParts.join(slash), filePattern: filePattern || ''}
+            }
+
+            var searcher = Functions.debounce(200, function(input, callback) {
+
+                if (!dir) dir = lively.ide.CommandLineInterface.cwd();
+
+                var dirParts = dir.split(slash),
+                    splitted = splitInput(input);
+                searchDir = dirParts.concat(splitted.dir).join(slash);
+
+                lively.ide.CommandLineSearch.findFiles("*", {cwd: searchDir, depth: 1}, function(files) {
+
+                    candidates = files.map(function(ea) {
+                        return {isListItem: true, string: String(ea.fileName) + (ea.isDirectory ? '/' : ''), value: ea}
+                    });
+
+                    var filePattern = splitted.filePattern;
+                    var filtered = narrower.doFilter(candidates, filePattern).filtered;
+
+                    if (filtered.length !== 1 && filePattern.trim().length) {
+                        filtered.unshift({
+                            isListItem: true,
+                            string: filePattern,
+                            value: {isDirectInput: true, fileName: filePattern}
+                        })
+                    }
+
+                    callback(filtered);
+                });
+            });
+
+            function candidateBuilder(input, callback) {
+                callback([input]);
+                searcher(input, callback);
+            };
+
+            narrower = lively.ide.tools.SelectionNarrowing.getNarrower({
+                // name: 'lively.ide.findFile.Narrower',
+                reactivateWithoutInit: true,
+                setup: function(n) {
+                    n.deactivate = n.deactivate.wrap(function(proceed) { dir = null; proceed(); });
+                },
+                spec: {
+                    prompt: 'search for something: ',
+                    candidates: [],
+                    maxItems: 25,
+                    candidatesUpdater: candidateBuilder,
+                    keepInputOnReactivate: true,
+                    completeInputOnRightArrow: function(candidate) {
+                        var splitted = splitInput(narrower.getInput())
+                        return (splitted.dir ? splitted.dir + slash : '') + candidate.string;
+                    },
+                    actions: [{
+                        name: 'do something',
+                        exec: function(candidate) {
+                            var fullpath = searchDir + slash + candidate.fileName;
+                            if (!candidate.isDirectory) {
+                                lively.ide.commands.byName['lively.ide.openTextEditor'].exec(fullpath);
+                            } else if (candidate.isDirectory) {
+                                lively.ide.commands.byName['lively.ide.openDirViewer'].exec(fullpath);
+                            }
+                        }
+                    }]
+                }
+            });
+
+            return true;
+        }
+    },
+
     'lively.ide.openPresentationController': {description: 'open presentation controller', isActive: lively.ide.commands.helper.noCodeEditorActive, exec: function() { $world.openPresentationController(); return true; }},
+
     'lively.PartsBin.open': {description: 'open PartsBin', isActive: lively.ide.commands.helper.noCodeEditorActive, exec: function() { $world.openPartsBin(); return true; }},
 
     'lively.ide.openIframe': {
@@ -1204,6 +1321,7 @@ Object.extend(lively.ide.commands.defaultBindings, { // bind commands to default
     'lively.ide.openSystemCodeBrowser': {mac: "Command-B", win: "Control-B"},
     'lively.ide.openWorkspace': {mac: "Command-K", win: "Control-K"},
     'lively.ide.openObjectEditor': {mac: "Command-O", win: "Control-O"},
+    'lively.ide.openASTEditor': {mac: 'cmd-s-l a s t', win: 'ctrl-s-l a s t'},
     'lively.PartsBin.open': {mac: "Command-P", win: "Control-P"},
     'lively.morphic.World.resetScale': {mac: "Command-0", win: "Control-0"},
     'lively.morphic.World.escape': "esc",
@@ -1223,6 +1341,7 @@ Object.extend(lively.ide.commands.defaultBindings, { // bind commands to default
     'lively.ide.resizeWindow.top': {mac: "cmd-s-l r e s t", win: "ctrl-s-l r e s t"},
     'lively.ide.resizeWindow.bottom': {mac: "cmd-s-l r e s b", win: "ctrl-s-l r e s b"},
     'lively.ide.browseFiles': 'Alt-t',
+    'lively.ide.findFile': {mac: ['Control-X F', 'Control-X Control-F'], win: ['Control-X F', 'Control-X Control-F']},
     'lively.ide.SystemCodeBrowser.browseModuleStructure': {mac: "m-s-t", win: 'm-s-t'},
     'lively.ide.commands.keys.reset': 'F8',
     'lively.ide.tools.SelectionNarrowing.activateLastActive': "cmd-shift-y",

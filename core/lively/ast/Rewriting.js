@@ -1637,8 +1637,8 @@ lively.ast.Rewriting.BaseVisitor.subclass("lively.ast.Rewriting.RewriteVisitor",
       + "    var realCode = f.toString();\n"
       + "    f.toStringRewritten = function() { return realCode; };\n"
       + "    f.toString = function toString() {\n"
-      + "        var ast = __getClosure(idx);\n"
-      + "        var src = escodegen.generate(ast);\n"
+      + "        var ast = this._cachedAst;\n"
+      + "        var src = ast.source || escodegen.generate(ast); // FIXME: get rid of source generation\n"
       + "        return src;\n"
       + "    };\n"
       + "    return f;\n"
@@ -1688,16 +1688,16 @@ lively.ast.Rewriting.BaseVisitor.subclass("lively.ast.Rewriting.RewriteVisitor",
     // when debugging is enabled UnwindException can do more...
     UnwindException.prototype.createAndShiftFrame = function(thiz, args, frameState, lastNodeAstIndex, pointerToOriginalAst) {
         var scope, topScope, newScope,
-            fState = frameState;
+            fState = frameState; // [1] = varMapping, [2] = parentFrameState
         do {
-            newScope = new lively.ast.AcornInterpreter.Scope(fState[1]); // varMapping
+            newScope = new lively.ast.AcornInterpreter.Scope(fState == Global ? Global : fState[1]);
             if (scope)
                 scope.setParentScope(newScope);
             else
                 topScope = newScope;
             scope = newScope
-            fState = fState[2]; // parentFrameState
-        } while (fState && fState != Global);
+            fState = fState == Global ? null : fState[2];
+        } while (fState);
 
         var alreadyComputed = frameState[0],
             func = new lively.ast.AcornInterpreter.Function(__getClosure(pointerToOriginalAst), topScope),

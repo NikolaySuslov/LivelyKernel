@@ -94,16 +94,23 @@ lively.BuildSpec('lively.ide.tools.CodeSearch', {
                 lively.bindings.connect(this, "checked", this.get('CodeSearch'), "searchModeChanged", {});
             }
         }, {
-            _Extent: lively.pt(200,18.0),
+            _Extent: lively.pt(90.0,18.0),
             _FontFamily: "Arial, sans-serif",
             _FontSize: 8,
-            _Position: lively.pt(614,24),
+            _HandStyle: "default",
+            _InputAllowed: false,
+            _Position: lively.pt(614.0,24.0),
+            allowInput: false,
             className: "lively.morphic.Text",
             fixedWidth: true,
             grabbingEnabled: false,
             layout: {moveHorizontal: true},
             name: "serversearchCheckBoxLabel",
-            textString: "searchOnServer"
+            textString: "searchOnServer",
+        onMouseDown: function onMouseDown(evt) {
+        var checkbox = this.get('serversearchCheckBox');
+        checkbox.setChecked(!checkbox.isChecked());
+    }
         }, {
             _BorderColor: Color.rgb(202,202,202),
             _BorderWidth: 1,
@@ -650,7 +657,7 @@ lively.BuildSpec('lively.ide.tools.CodeSearch', {
         function(err) {
 
             // 1. add info about what is matched...
-            var re = new RegExp('.{0,20}' + searchString + '.{0,20}', 'i');
+            var re = new RegExp('.{0,20}' + searchString.regExpEscape() + '.{0,20}', 'i');
 
             found = found.map(function(found) {
 
