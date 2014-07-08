@@ -498,6 +498,34 @@ Object.extend(lively.ide.commands.byName, {
     'lively.ide.browseFiles': {
         description: 'browse files',
         exec: function() {
+
+            var actions = [
+                {name: 'open in system browser', exec: function(candidate) { lively.ide.browse(URL.root.withFilename(candidate.relativePath)); }},
+                {name: 'open in text editor', exec: function(candidate) { lively.ide.openFile(candidate.fullPath); }},
+                {name: 'open in web browser', exec: function(candidate) { window.open(candidate.relativePath); }},
+                {name: 'open in versions viewer', exec: function(candidate) { lively.ide.commands.exec("lively.ide.openVersionsViewer", candidate.relativePath); }},
+                {name: 'reset directory watcher', exec: function(candidate) { lively.ide.DirectoryWatcher.reset(); }}];
+
+            if (lively.ide.CommandLineInterface.rootDirectory) {
+                // SCB is currently only supported for Lively files
+                actions.shift();
+            }
+
+            var dir, candidates = [], spec = {
+                name: 'lively.ide.browseFiles.NarrowingList',
+                spec: {
+                    candidates: candidates,
+                    prompt: 'filename: ',
+                    init: update.curry(candidates),
+                    keepInputOnReactivate: true,
+                    actions: actions
+                }
+            }, narrower = lively.ide.tools.SelectionNarrowing.getNarrower(spec);
+
+            return true;
+
+            // -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
             function makeCandidates(dir, files) {
                 return Object.keys(files).map(function(fullPath) {
                     var relativePath = fullPath.slice(dir.length+1).replace(/\\/g, '/');
@@ -509,50 +537,53 @@ Object.extend(lively.ide.commands.byName, {
                     }
                 }).compact();
             }
+
             function update(candidates, narrower, thenDo) {
+                var closeLoadingIndicator;
+                Functions.composeAsync(
+                    function(next) {
+                        showLoadingIndicatorThenDo(function(close) {
+                            closeLoadingIndicator = close; next(); });
+                    },
+                    function(next) {
+                        require('lively.ide.DirectoryWatcher').toRun(function() { next() });
+                    },
+                    withDirDo,
+                    function(dir, next) { next(null, false, dir); },
+                    function fetchFiles(isRetry, dir, next) {
+                        lively.ide.DirectoryWatcher.withFilesOfDir(dir, function(files) {
+                            if (files) return next(null, files, dir);
+                            if (!isRetry) {
+                                lively.ide.DirectoryWatcher.reset();
+                                return fetchFiles.curry(true, dir, next).delay(0.5);
+                            }
+                            next(new Error('Cannot fetch files for ' + dir));
+                        });
+                    },
+                    function(files, dir, next) {
+                        candidates.length = 0;
+                        candidates.pushAll(makeCandidates(dir, files));
+                        next();
+                    }
+                )(function(err) {
+                    closeLoadingIndicator();
+                    if (err) show("Error int browse files: %s", err);
+                    else thenDo();
+                });
+
+                // -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
                 function withDirDo(func) {
-                    if (narrower.dir) func(narrower.dir);
-                    else lively.shell.exec('pwd', {}, function(cmd) { func(cmd.resultString()); });
+                    if (narrower.dir) func(null, narrower.dir);
+                    else lively.shell.exec('pwd', {}, function(cmd) { func(null, cmd.resultString()); });
                 }
                 function showLoadingIndicatorThenDo(thenDo) {
                     require('lively.morphic.tools.LoadingIndicator').toRun(function() {
                         lively.morphic.tools.LoadingIndicator.open(thenDo);
                     });
                 }
-                showLoadingIndicatorThenDo(function(closeLoadingIndicator) {
-                    require('lively.ide.DirectoryWatcher').toRun(function() {
-                        withDirDo(function(dir) {
-                            lively.ide.DirectoryWatcher.withFilesOfDir(dir, function(files) {
-                                candidates.length = 0;
-                                candidates.pushAll(makeCandidates(dir, files));
-                                closeLoadingIndicator();
-                                thenDo();
-                            });
-                        });
-                    });
-                })
             }
-            var actions = [
-                {name: 'open in system browser', exec: function(candidate) { lively.ide.browse(URL.root.withFilename(candidate.relativePath)); }},
-                {name: 'open in text editor', exec: function(candidate) { lively.ide.openFile(candidate.fullPath); }},
-                {name: 'open in web browser', exec: function(candidate) { window.open(candidate.relativePath); }},
-                {name: 'open in versions viewer', exec: function(candidate) { lively.ide.commands.exec("lively.ide.openVersionsViewer", candidate.relativePath); }},
-                {name: 'reset directory watcher', exec: function(candidate) { lively.ide.DirectoryWatcher.reset(); }}];
-            if (lively.ide.CommandLineInterface.rootDirectory) {
-                // SCB is currently only supported for Lively files
-                actions.shift();
-            }
-            var dir, candidates = [], spec = {
-                name: 'lively.ide.browseFiles.NarrowingList',
-                spec: {
-                    candidates: candidates,
-                    prompt: 'filename: ',
-                    init: update.curry(candidates),
-                    keepInputOnReactivate: true,
-                    actions: actions
-                }
-            }, narrower = lively.ide.tools.SelectionNarrowing.getNarrower(spec);
-            return true;
+
         }
     },
 
@@ -580,6 +611,14 @@ Object.extend(lively.ide.commands.byName, {
                 }
             }
 
+            return true;
+        }
+    },
+
+    'lively.ide.SystemCodeBrowser.reloadAllSources': {
+        description: 'reload all sources for SystemCodeBrowser',
+        exec: function() {
+            lively.ide.sourceDB().reloadAllModules(true);
             return true;
         }
     },
@@ -1079,7 +1118,7 @@ Object.extend(lively.ide.commands.byName, {
             };
 
             narrower = lively.ide.tools.SelectionNarrowing.getNarrower({
-                // name: 'lively.ide.findFile.Narrower',
+                name: 'lively.ide.findFile.Narrower',
                 reactivateWithoutInit: true,
                 setup: function(n) {
                     n.deactivate = n.deactivate.wrap(function(proceed) { dir = null; proceed(); });

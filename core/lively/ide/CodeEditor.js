@@ -325,9 +325,9 @@ lively.morphic.Morph.subclass('lively.morphic.CodeEditor',
     indexToPosition: function(absPos) { return this.getDocument().indexToPosition(absPos); },
     positionToIndex: function(pos) { return this.getDocument().positionToIndex(pos); },
 
-    getSession: function(absPos) { return this.withAceDo(function(ed) { return ed.session; }); },
+    getSession: function() { return this.withAceDo(function(ed) { return ed.session; }); },
 
-    getDocument: function(absPos) { return this.getSession().getDocument(); }
+    getDocument: function() { return this.getSession().getDocument(); }
 
 },
 'ace interface', {
@@ -361,6 +361,7 @@ lively.morphic.Morph.subclass('lively.morphic.CodeEditor',
     },
 
     createRange: function(start, end) {
+        // start/end = { row: ..., column: ... }
         return lively.ide.ace.require("ace/range").Range.fromPoints(start, end);
     },
 
@@ -457,6 +458,7 @@ lively.morphic.Morph.subclass('lively.morphic.CodeEditor',
             return name.replace('ace/mode/', '');
         }) || 'text';
     },
+
     getTextModeNoExtension: function() {
         // FIXME this returns the name of the current text mode without Lively
         // additions that are appended via :xyz
@@ -466,6 +468,28 @@ lively.morphic.Morph.subclass('lively.morphic.CodeEditor',
     showsCompleter: function() {
         return this.withAceDo(function(ed) {
             return ed.completer && ed.completer.activated; });
+    },
+
+    addMarkerAce: function(range, clazz, type, inFront, cb) {
+        var self = this;
+        this.withAceDo(function(ed) {
+            var marker = ed.session.addMarker(range, clazz, type, inFront);
+            if (cb) cb.call(self, marker);
+        });
+    },
+
+    addMarker: function(start, end, clazz, type, inFront, cb) {
+        var self = this;
+        this.withAceDo(function(ed) {
+            var range = this.createRange(this.indexToPosition(start), this.indexToPosition(end));
+            self.addMarkerAce(range, clazz, type, inFront, cb);
+        });
+    },
+
+    removeMarker: function(marker) {
+        this.withAceDo(function(ed) {
+            ed.session.removeMarker(marker);
+        });
     }
 
 },
@@ -724,12 +748,16 @@ lively.morphic.Morph.subclass('lively.morphic.CodeEditor',
                 }
             };
 
-        if (lively.Config.get('improvedJavaScriptEval')) {
-            var ast = lively.ast.acorn.parse(__evalStatement);
-            var subst = {name: "Global", type: "Identifier"};
-            var transformed = lively.ast.transform.replaceTopLevelVarDeclsWithAssignment(ast, subst);
-            __evalStatement = lively.ast.acorn.stringify(transformed);
-            $morph('log') && ($morph('log').textString = __evalStatement);
+        if (lively.Config.get('improvedJavaScriptEval') && __evalStatement.length < 150000) {
+            try {
+                var transformed = lively.ast.transform.replaceTopLevelVarDeclAndUsageForCapturing(
+                    __evalStatement, {name: "Global", type: "Identifier"});
+                __evalStatement = transformed.source;
+                $morph('log') && ($morph('log').textString = transformed.source);
+            } catch(e) {
+                if (Config.showImprovedJavaScriptEvalErrors) $world.logError(e)
+                else console.error("Eval preprocess error: %s", e.stack || e);
+            }
         }
 
         try {

@@ -51,26 +51,26 @@ lively.BuildSpec('lively.ide.tools.Debugger', {
                 borderSize: 1.59,
                 extentWithoutPlaceholder: lively.pt(684.1,29.0),
                 resizeWidth: true,
-                spacing: 4.670000000000001,
+                spacing: 4.67,
                 type: "lively.morphic.Layout.HorizontalLayout"
             },
             name: "ControlPanel",
             sourceModule: "lively.morphic.Core",
             submorphs: [{
-                _BorderColor: Color.rgb(214,214,214),
+                _BorderColor: Color.rgb(189,190,192),
                 _BorderRadius: 3,
                 _BorderWidth: 1,
                 _Extent: lively.pt(131.7,19.8),
                 _Position: lively.pt(1.6,1.6),
                 className: "lively.morphic.Button",
-                isCopyMorphRef: true,
+                droppingEnabled: false,
+                grabbingEnabled: false,
                 isPressed: false,
                 label: "continue",
                 layout: {
                     resizeHeight: true,
                     resizeWidth: true
                 },
-                morphRefId: 1,
                 name: "ContinueButton",
                 sourceModule: "lively.morphic.Widgets",
                 toggle: false,
@@ -79,12 +79,14 @@ lively.BuildSpec('lively.ide.tools.Debugger', {
                 lively.bindings.connect(this, "fire", this.get("Debugger"), "resume", {});
             }
             },{
-                _BorderColor: Color.rgb(214,214,214),
+                _BorderColor: Color.rgb(189,190,192),
                 _BorderRadius: 3,
                 _BorderWidth: 1,
                 _Extent: lively.pt(131.7,19.8),
                 _Position: lively.pt(138.0,1.6),
                 className: "lively.morphic.Button",
+                droppingEnabled: false,
+                grabbingEnabled: false,
                 isPressed: false,
                 label: "step into",
                 layout: {
@@ -99,20 +101,20 @@ lively.BuildSpec('lively.ide.tools.Debugger', {
                 lively.bindings.connect(this, "fire", this.get("Debugger"), "stepInto", {});
             }
             },{
-                _BorderColor: Color.rgb(214,214,214),
+                _BorderColor: Color.rgb(189,190,192),
                 _BorderRadius: 3,
                 _BorderWidth: 1,
                 _Extent: lively.pt(131.7,19.8),
                 _Position: lively.pt(274.4,1.6),
                 className: "lively.morphic.Button",
-                isCopyMorphRef: true,
+                droppingEnabled: false,
+                grabbingEnabled: false,
                 isPressed: false,
                 label: "step over",
                 layout: {
                     resizeHeight: true,
                     resizeWidth: true
                 },
-                morphRefId: 1,
                 name: "StepOverButton",
                 sourceModule: "lively.morphic.Widgets",
                 toggle: false,
@@ -121,20 +123,20 @@ lively.BuildSpec('lively.ide.tools.Debugger', {
                 lively.bindings.connect(this, "fire", this.get("Debugger"), "stepOver", {});
             }
             },{
-                _BorderColor: Color.rgb(214,214,214),
+                _BorderColor: Color.rgb(189,190,192),
                 _BorderRadius: 3,
                 _BorderWidth: 1,
                 _Extent: lively.pt(131.7,19.8),
                 _Position: lively.pt(410.8,1.6),
                 className: "lively.morphic.Button",
-                isCopyMorphRef: true,
+                droppingEnabled: false,
+                grabbingEnabled: false,
                 isPressed: false,
                 label: "restart",
                 layout: {
                     resizeHeight: true,
                     resizeWidth: true
                 },
-                morphRefId: 1,
                 name: "RestartButton",
                 sourceModule: "lively.morphic.Widgets",
                 toggle: false,
@@ -143,20 +145,20 @@ lively.BuildSpec('lively.ide.tools.Debugger', {
                 lively.bindings.connect(this, "fire", this.get("Debugger"), "restart", {});
             }
             },{
-                _BorderColor: Color.rgb(214,214,214),
+                _BorderColor: Color.rgb(189,190,192),
                 _BorderRadius: 3,
                 _BorderWidth: 1,
                 _Extent: lively.pt(131.7,19.8),
                 _Position: lively.pt(547.3,1.6),
                 className: "lively.morphic.Button",
-                isCopyMorphRef: true,
+                droppingEnabled: false,
+                grabbingEnabled: false,
                 isPressed: false,
                 label: "browse",
                 layout: {
                     resizeHeight: true,
                     resizeWidth: true
                 },
-                morphRefId: 1,
                 name: "BrowseButton",
                 sourceModule: "lively.morphic.Widgets",
                 toggle: false,
@@ -235,25 +237,29 @@ lively.BuildSpec('lively.ide.tools.Debugger', {
                 _BorderColor: Color.rgb(230,230,230),
                 _BorderRadius: 0,
                 _BorderWidth: 1,
-                _Extent: lively.pt(489.5,311.6),
+                _Extent: lively.pt(479.0,302.0),
                 _FontSize: 12,
                 _LineWrapping: true,
-                _InputAllowed: false,
                 _Position: lively.pt(1.0,1.1),
-                _ShowActiveLine: true,
+                _ShowActiveLine: false,
                 _ShowErrors: false,
                 _ShowGutter: true,
                 _ShowIndents: true,
                 _ShowInvisibles: false,
                 _ShowPrintMargin: false,
-                _ShowWarnings: false,
+                _ShowWarnings: true,
                 _SoftTabs: true,
-                _TextMode: "javascript",
+                _StyleSheet: ".ace_debugging {\n\
+                	position: absolute;\n\
+                	background: #ff9999;\n\
+                	border: 1px rgb(200, 200, 250);\n\
+                }",
                 _Theme: lively.Config.get("aceWorkspaceTheme"),
                 _aceInitialized: true,
                 accessibleInInactiveWindow: true,
-                allowInput: false,
+                allowInput: true,
                 className: "lively.morphic.CodeEditor",
+                doNotSerialize: ["debugMarker"],
                 evalEnabled: false,
                 fixedHeight: true,
                 name: "FrameSource",
@@ -263,41 +269,60 @@ lively.BuildSpec('lively.ide.tools.Debugger', {
                     resizeHeight: true
                 },
                 sourceModule: "lively.ide.CodeEditor",
-                submorphs: [{
-                    _BorderStyle: "none",
-                    _BorderWidth: 1,
-                    _Extent: lively.pt(684.0,504.0),
-                    _Fill: Color.rgba(0,0,204,0),
-                    className: "lively.morphic.Box",
-                    droppingEnabled: false,
-                    grabbingEnabled: false,
-                    halosEnabled: false,
-                    layout: {
-                        resizeHeight: true,
-                        resizeWidth: true
-                    },
-                    name: "DoNotRemoveSelection",
-                    sourceModule: "lively.morphic.Core"
-                }],
-                boundEval: function boundEval(str) {
-              var frame = this.get("Debugger").currentFrame;
-              if (!frame) return;
-              var str = "function(){\n" + str + "\n}";
-              var fun = Function.fromString(str).forInterpretation();
-              fun.lexicalScope = frame;
-              fun.basicApply = function(f) {
-                f.mapping = frame.mapping;
-                return lively.ast.Function.prototype.basicApply.call(this, f);
-              };
-              try {
-                return fun.call(frame.getThis());
-              } finally {
-                this.get("FrameScope").updateList(
-                    frame.listItemsForIntrospection()
-                );
-              }
+                textMode: "javascript",
+                boundEval: function boundEval(__evalStatement) {
+                var frame = this.get("Debugger").currentFrame;
+                if (!frame) return;
+
+                var interpreter = new lively.ast.AcornInterpreter.Interpreter(),
+                    str, ast,
+                    pc = frame.getPC();
+                frame.setPC(null);
+                try {
+                    ast = lively.ast.acorn.parse(str = '(' + __evalStatement + ')');
+                    acorn.walk.addAstIndex(ast);
+                    acorn.walk.addSource(ast, str);
+                    return interpreter.runWithFrame(ast, frame);
+                } catch (e) {
+                    ast = lively.ast.acorn.parse(str = __evalStatement);
+                    acorn.walk.addAstIndex(ast);
+                    acorn.walk.addSource(ast, str);
+                    // In case str starts with a comment, set str to program node
+                    ast.source = str;
+                    return interpreter.runWithFrame(ast, frame);
+                } finally {
+                    frame.setPC(pc);
+                    this.get("FrameScope").updateList(frame);
+                }
+            },
+                doSave: function doSave() {
+                // part's script
+                var frame = this.get("Debugger").currentFrame,
+                    thisObject = frame.getThis(),
+                    source = this.getTextString(),
+                    saved;
+                if (thisObject && thisObject.isMorph && frame.getOriginalAst().type != 'Program') {
+                    saved = this.tryBoundEval('this.addScript(' + this.textString + ');');
+
+                    if (!saved || saved instanceof Error) {
+                        var msg = saved.message || "not saved";
+                        this.setStatusMessage(msg, Color.red);
+                        return;
+                    }
+                    this.lastSaveSource = source;
+
+                    // FIXME: method name might have changed! + do not use internals
+                    var func = frame.func,
+                        scriptName = func.methodName || func.name();
+                    func.node = thisObject[scriptName]._cachedAst;
+                    func.source = source;
+
+                    alertOK('Saved ' + scriptName + '!');
+                } else
+                    alert('Not saved: Saving not yet supported!');
             },
                 connectionRebuilder: function connectionRebuilder() {
+                lively.bindings.connect(this, "textString", this, "onTextChange", {});
             },
                 debugSelection: function debugSelection() {
               var frame = this.get("Debugger").currentFrame;
@@ -322,8 +347,6 @@ lively.BuildSpec('lively.ide.tools.Debugger', {
                 highlightPC: function highlightPC() {
                 var frame = this.get("Debugger").currentFrame;
                 if (frame && frame.pc !== null) {
-                    // var style = { backgroundColor: Color.rgb(255,255,127) };
-                    // target.emphasize(style, frame.pc.pos[0], frame.pc.pos[1]);
                     var context = frame.func.getAst(),
                         start = frame.pc.start,
                         end = frame.pc.end;
@@ -331,13 +354,40 @@ lively.BuildSpec('lively.ide.tools.Debugger', {
                         start -= context.start;
                         end -= context.start;
                     }
-                    this.setSelectionRange(start, end);
+                    this.addMarker(start, end, 'ace_debugging', 'text', false, function callback(marker) {
+                        this.removeDebugMarker();
+                        this.debugMarker = marker;
+                    });
+                    this.withAceDo(function(ed) {
+                        var lineStart = ed.session.getDocument().indexToPosition(start).row,
+                            lineEnd = ed.session.getDocument().indexToPosition(end).row;
+                        ed.scrollToLine(Math.floor((lineStart + lineEnd) / 2), true, false);
+                    });
                 }
             },
                 showSource: function showSource(frame) {
-                // FIXME: make additional morph obsolete by restricting user selection
-                this.addMorph(this.get('DoNotRemoveSelection'));
-                this.textString = (frame && frame.func) ? frame.func.getSource() : '';
+                var source = (frame && frame.func) ? frame.func.getSource() : '';
+                this.lastSaveSource = source;
+                this.textString = source;
+            },
+                onTextChange: function onTextChange(newText) {
+                if (newText == this.lastSaveSource) return;
+
+                this.removeDebugMarker();
+
+                // disable PC-related actions
+                this.get("ContinueButton").setActive(false);
+                this.get("StepIntoButton").setActive(false);
+                this.get("StepOverButton").setActive(false);
+            },
+                removeDebugMarker: function removeDebugMarker() {
+                if (this.debugMarker !== undefined) {
+                    this.removeMarker(this.debugMarker);
+                    delete this.debugMarker;
+                }
+            },
+                reset: function reset() {
+                this.doNotSerialize = ["debugMarker"];
             }
             },{
                 _BorderColor: Color.rgb(230,230,230),
@@ -347,9 +397,9 @@ lively.BuildSpec('lively.ide.tools.Debugger', {
                     x: "hidden",
                     y: "auto"
                 },
-                _Extent: lively.pt(184.3,311.6),
+                _Extent: lively.pt(184.3,301.9),
                 _Fill: Color.rgb(255,255,255),
-                _Position: lively.pt(496.3,0.0),
+                _Position: lively.pt(500.0,0.0),
                 className: "lively.morphic.Box",
                 droppingEnabled: true,
                 layout: {
@@ -517,15 +567,15 @@ lively.BuildSpec('lively.ide.tools.Debugger', {
         this.get("FrameSource").highlightPC();
         this.get("FrameScope").updateList(frame);
         if (frame && frame.isResuming()) {
-            this.get("ContinueButton").isActive = true;
-            this.get("StepIntoButton").isActive = true;
-            this.get("StepOverButton").isActive = true;
-            this.get("RestartButton").isActive = true;
+            this.get("ContinueButton").setActive(true);
+            this.get("StepIntoButton").setActive(true);
+            this.get("StepOverButton").setActive(true);
+            this.get("RestartButton").setActive(true);
         } else {
-            this.get("ContinueButton").isActive = false;
-            this.get("StepIntoButton").isActive = false;
-            this.get("StepOverButton").isActive = false;
-            this.get("RestartButton").isActive = false;
+            this.get("ContinueButton").setActive(false);
+            this.get("StepIntoButton").setActive(false);
+            this.get("StepOverButton").setActive(false);
+            this.get("RestartButton").setActive(false);
         }
     },
         setTopFrame: function setTopFrame(topFrame) {

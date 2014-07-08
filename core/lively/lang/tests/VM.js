@@ -30,9 +30,18 @@ AsyncTestCase.subclass('lively.lang.tests.VM.Test',
         this.done();
     },
 
-    testECapturedVarsReplaceVarRefs: function() {
+    testEvalSingleExpressions: function() {
+        var result = lively.lang.VM.syncEval('function() {}');
+        this.assert(typeof result === 'function');
+        var result = lively.lang.VM.syncEval('{x: 3}');
+        this.assert(typeof result === 'object');
+        this.assertEquals(3, result.x);
+        this.done();
+    },
+
+    testEvalCapturedVarsReplaceVarRefs: function() {
         var varMapper = {};
-        var code = "var x = 3; var y = foo() + x; function foo() { return x++ }";
+        var code = "var x = 3; var y = foo() + x; function foo() { return x++ }; y";
         var result = lively.lang.VM.syncEval(code, {topLevelVarRecorder: varMapper});
 
         this.assertEquals(7, result);

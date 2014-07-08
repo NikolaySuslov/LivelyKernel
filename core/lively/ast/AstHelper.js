@@ -173,10 +173,12 @@ Object.subclass("lively.ast.MozillaAST.BaseVisitor",
             retVal = this.accept(node.handler, depth, state, path.concat(["handler"]));
         }
 
-        node.guardedHandlers.forEach(function(ea, i) {
-            // ea is of type CatchClause
-            retVal = this.accept(ea, depth, state, path.concat(["guardedHandlers", i]));
-        }, this);
+        if (node.guardedHandlers) {
+            node.guardedHandlers.forEach(function(ea, i) {
+                // ea is of type CatchClause
+                retVal = this.accept(ea, depth, state, path.concat(["guardedHandlers", i]));
+            }, this);
+        }
 
         if (node.finalizer) {
             // finalizer is a node of type BlockStatement
@@ -866,6 +868,137 @@ lively.ast.MozillaAST.BaseVisitor.subclass("lively.ast.ComparisonVisitor",
     }
 });
 
+lively.ast.MozillaAST.BaseVisitor.subclass("lively.ast.ScopeVisitor",
+'scope specific', {
+    newScope: function(scopeNode, parentScope) {
+        var scope = {node: scopeNode, varDecls: [], funcDecls: [], refs: [], params: [], subScopes: []}
+        if (parentScope) parentScope.subScopes.push(scope);
+        return scope;
+    }
+},
+'visiting', {
+
+    accept: function (node, depth, scope, path) {
+        path = path || [];
+        try {
+        return this['visit' + node.type](node, depth, scope, path);
+
+        } catch (e) {
+            show(e.stack)
+        }
+    },
+
+    visitVariableDeclaration: function ($super, node, depth, scope, path) {
+        scope.varDecls.push(node);
+        return $super(node, depth, scope, path);
+    },
+
+    visitVariableDeclarator: function (node, depth, state, path) {
+        //ignore id
+        var retVal;
+        if (node.init) {
+            retVal = this.accept(node.init, depth, state, path.concat(["init"]));
+        }
+        return retVal;
+    },
+
+    visitFunction: function (node, depth, scope, path) {
+        var newScope = this.newScope(node, scope);
+        newScope.params = node.params.clone();
+        return newScope;
+    },
+
+    visitFunctionDeclaration: function ($super, node, depth, scope, path) {
+        scope.funcDecls.push(node);
+        var newScope = this.visitFunction(node, depth, scope, path);
+
+        // don't visit id and params
+        var retVal;
+        if (node.defaults) {
+            node.defaults.forEach(function(ea, i) {
+                retVal = this.accept(ea, depth, newScope, path.concat(["defaults", i]));
+            }, this);
+        }
+        if (node.rest) {
+            retVal = this.accept(node.rest, depth, newScope, path.concat(["rest"]));
+        }
+        retVal = this.accept(node.body, depth, newScope, path.concat(["body"]));
+        return retVal;
+    },
+
+    visitFunctionExpression: function ($super, node, depth, scope, path) {
+        var newScope = this.visitFunction(node, depth, scope, path);
+
+        // don't visit id and params
+        var retVal;
+        if (node.defaults) {
+            node.defaults.forEach(function(ea, i) {
+                retVal = this.accept(ea, depth, newScope, path.concat(["defaults", i]));
+            }, this);
+        }
+
+        if (node.rest) {
+            retVal = this.accept(node.rest, depth, newScope, path.concat(["rest"]));
+        }
+        retVal = this.accept(node.body, depth, newScope, path.concat(["body"]));
+        return retVal;
+
+    },
+
+    visitIdentifier: function ($super, node, depth, scope, path) {
+        scope.refs.push(node);
+        return $super(node, depth, scope, path);
+    },
+
+    visitMemberExpression: function (node, depth, state, path) {
+        // only visit property part when prop is computed so we don't gather
+        // prop ids
+        var retVal;
+        retVal = this.accept(node.object, depth, state, path.concat(["object"]));
+        if (node.computed) {
+            retVal = this.accept(node.property, depth, state, path.concat(["property"]));
+        }
+        return retVal;
+    },
+
+    visitObjectExpression: function (node, depth, state, path) {
+        var retVal;
+        node.properties.forEach(function(ea, i) {
+            // ignore keys: ["properties", i, "key"]
+            retVal = this.accept(ea.value, depth, state, path.concat(["properties", i, "value"]));
+        }, this);
+        return retVal;
+    },
+
+    visitTryStatement: function (node, depth, scope, path) {
+        var retVal;
+        // block is a node of type Blockscopement
+        retVal = this.accept(node.block, depth, scope, path.concat(["block"]));
+
+        if (node.handler) {
+            // handler is a node of type CatchClause
+            retVal = this.accept(node.handler, depth, scope, path.concat(["handler"]));
+            scope.params.push(node.handler.param);
+        }
+
+        node.guardedHandlers && node.guardedHandlers.forEach(function(ea, i) {
+            retVal = this.accept(ea, depth, scope, path.concat(["guardedHandlers", i]));
+        }, this);
+
+        if (node.finalizer) {
+            retVal = this.accept(node.finalizer, depth, scope, path.concat(["finalizer"]));
+        }
+        return retVal;
+    },
+
+    visitLabeledStatement: function (node, depth, state, path) {
+        var retVal;
+        // ignore label
+        retVal = this.accept(node.body, depth, state, path.concat(["body"]));
+        return retVal;
+    }
+});
+
 Object.extend(lively.ast.acorn, {
 
     withMozillaAstDo: function(ast, state, func) {
@@ -1033,6 +1166,13 @@ Object.extend(lively.ast.acorn, {
 
 Object.extend(lively.ast.query, {
 
+    scopes: function(ast) {
+        var vis = new lively.ast.ScopeVisitor();
+        var scope = vis.newScope(ast, null);
+        vis.accept(ast, 0, scope, []);
+        return scope;
+    },
+
     scopesAtPos: function(pos, ast) {
         return lively.ast.acorn.nodesAt(pos, ast).filter(function(node) {
             return node.type === 'Program'
@@ -1053,89 +1193,299 @@ Object.extend(lively.ast.query, {
         }).result;
     },
 
-    declsAt: function(pos, ast) {
-        var scopes = lively.ast.query.scopesAtPos(pos, ast).map(function(scopeNode) {
-            return {
-                scope: scopeNode,
-                decls: lively.ast.query.nodesInScopeOf(scopeNode).filter(function(node) {
-                    return node.type === 'FunctionDeclaration'
-                        || node.type === 'VariableDeclaration';
-                })
-            }
-        }, this)
-
-        return scopes.pluck('decls').flatten().uniq();
-    },
-
-    topLevelScope: function(ast) {
-        return lively.ast.query.scopesAtPos(ast.end, ast).first();
-    },
-
     topLevelDecls: function(ast) {
-        return lively.ast.query.declsAt(ast.end, ast);
+        var scope = lively.ast.query.scopes(ast);
+        return scope.varDecls.concat(scope.funcDecls);
+    },
+
+    topLevelDeclsAndRefs: function(ast) {
+        var scope = lively.ast.query.scopes(ast);
+        return {
+            varDecls: scope.varDecls,
+            funcDecls: scope.funcDecls,
+            refs: scope.refs.concat(findTopLevelRefsOfScopes(
+                declaredVarNames(scope), [], scope.subScopes))
+        }
+
+        // -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+        function declaredVarNames(scope) {
+            return scope.funcDecls.pluck('id').pluck('name').compact()
+                .concat(scope.params.pluck('name'))
+                .concat(scope.varDecls.pluck('declarations').flatten()
+                    .pluck('id').pluck('name'));
+        }
+
+        function findTopLevelRefsOfScopes(topLevelRefs, innerDeclaredVars, scopes) {
+            return scopes.map(findTopLevelRefs.curry(topLevelRefs, innerDeclaredVars)).flatten();
+        }
+
+        function findTopLevelRefs(topLevelRefs, innerDeclaredVars, scope) {
+            var decls = innerDeclaredVars.concat(declaredVarNames(scope)),
+                outerRefs = scope.refs.filter(function(ref) {
+                    return !decls.include(ref.name) });
+            return outerRefs
+                .filter(function(ref) { return topLevelRefs.include(ref.name); })
+                .concat(findTopLevelRefsOfScopes(topLevelRefs, decls, scope.subScopes));
+        }
+
+    },
+
+    findGlobalVarRefs: function(ast, options) {
+        var useComments = options && !!options.jslintGlobalComment;
+
+        var knownGlobals = [
+           "true", "false", "null", "undefined", "arguments",
+           "Object", "Function", "String", "Array", "Date", "Boolean", "Number", "RegExp",
+           "Error", "EvalError", "RangeError", "ReferenceError", "SyntaxError", "TypeError", "URIError",
+           "Math", "NaN", "Infinity", "Intl", "JSON",
+           "parseFloat", "parseInt", "isNaN", "isFinite", "eval", "alert",
+           "decodeURI", "decodeURIComponent", "encodeURI", "encodeURIComponent",
+           "window", "document", "console",
+           "Node", "HTMLCanvasElement", "Image", "Class",
+           "Global", "Functions", "Objects", "Strings",
+           "module", "lively", "pt", "rect", "rgb"];
+
+        if (typeof ast === "string") ast = lively.ast.acorn.parse(ast, {withComments: true});
+        var scope = lively.ast.query.scopes(ast);
+
+        return findUndeclaredReferences(scope)
+
+        // -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+        function getDeclaredNames(scope) {
+            var names = [];
+            scope.varDecls.forEach(function(ea) {
+                ea.declarations.forEach(function(decl) { names.push(decl.id.name); });
+            });
+            scope.funcDecls.forEach(function(decl) { names.push(decl.id.name); });
+            scope.params.forEach(function(decl) { names.push(decl.name); });
+            if (useComments) {
+                names.pushAll(findJsLintGlobalDeclarations(scope.node.type === 'Program' ? scope.node : scope.node.body));
+            }
+            return names;
+        }
+
+        function findUndeclaredReferences(scope) {
+            var names = getDeclaredNames(scope).concat(knownGlobals);
+            return scope.subScopes
+                .map(findUndeclaredReferences)
+                .reduce(function(refs, ea) { return refs.concat(ea); }, scope.refs)
+                .filter(function(ref) { return names.indexOf(ref.name) === -1; });
+        }
+
+        function findJsLintGlobalDeclarations(node) {
+            // node.body
+            if (!node || !node.comments) return [];
+            return node.comments
+                .filter(function(ea) { return ea.text.trim().startsWith('global') })
+                .map(function(ea) {
+                    return ea.text.replace(/^\s*global\s*/, '').split(',').invoke('trim');
+                }).flatten();
+        }
+
     }
 
 });
 
 Object.extend(lively.ast.transform, {
 
-    replaceNode: function(ast, targetNode, transformedNode) {
-        var pathToNode, hasAstIndex = !!targetNode.astIndex;
-        lively.ast.acorn.withMozillaAstDo(ast, {}, function(next, node, state, depth, path) {
-            if (pathToNode) return; // already found
-            if (node === targetNode || (hasAstIndex && node.astIndex === targetNode.astIndex)) pathToNode = path;
-            else next();
-        });
+    helper: {
+        // currently this is used by the replacement functions below but
+        // I don't wan't to make it part of our AST API
 
-        if (!pathToNode)
-            throw new Error(
-                Strings.format("cannot find path to node %o\n%s", targetNode, lively.printStack()));
+        _node2string: function(node) {
+            return node.source || lively.ast.acorn.stringify(node)
+        },
 
-        var copy = acorn.walk.copy(ast);
-        lively.PropertyPath(pathToNode).set(copy, transformedNode);
-        return copy;
+        _findIndentAt: function(string, pos) {
+            var bol = Strings.peekLeft(string, pos, /\s+$/),
+                indent = typeof bol === 'number' ? string.slice(bol, pos) : '';
+            if (indent[0] === '\n') indent = indent.slice(1);
+            return indent;
+        },
+
+        _applyChanges: function(changes, source) {
+            return changes.reduce(function(source, change) {
+                if (change.type === 'del') {
+                    return source.slice(0, change.pos) + source.slice(change.pos + change.length);
+                } else if (change.type === 'add') {
+                    return source.slice(0, change.pos) + change.string + source.slice(change.pos);
+                }
+                throw new Error('Uexpected change ' + Objects.inspect(change));
+            }, source);
+        },
+
+        _compareNodesForReplacement: function(nodeA, nodeB) {
+            // equals
+            if (nodeA.start === nodeB.start && nodeA.end === nodeB.end) return 0;
+            // a "left" of b
+            if (nodeA.end <= nodeB.start) return -1;
+            // a "right" of b
+            if (nodeA.start >= nodeB.end) return 1;
+            // a contains b
+            if (nodeA.start <= nodeB.start && nodeA.end >= nodeB.end) return 1;
+            // b contains a
+            if (nodeB.start <= nodeA.start && nodeB.end >= nodeA.end) return -1;
+            throw new Error('Comparing nodes');
+        },
+
+        replaceNode: function(target, replacementFunc, sourceOrChanges) {
+            // parameters:
+            //   - target: ast note
+            //   - replacementFunc that gets this node and its source snippet
+            //     handed and should produce a new ast node.
+            //   - sourceOrChanges: If its a string -- the source code to rewrite
+            //                      If its and object -- {changes: ARRAY, source: STRING}
+
+            var sourceChanges = typeof sourceOrChanges === 'object' ?
+                sourceOrChanges : {changes: [], source: sourceOrChanges},
+                insideChangedBefore = false,
+                pos = sourceChanges.changes.reduce(function(pos, change) {
+                    // fixup the start and end indices of target using the del/add
+                    // changes already applied
+                    if (pos.end < change.pos) return pos;
+
+                    var isInFront = change.pos < pos.start;
+                    insideChangedBefore = insideChangedBefore
+                                       || change.pos >= pos.start && change.pos <= pos.end;
+
+                    if (change.type === 'add') return {
+                        start: isInFront ? pos.start + change.string.length : pos.start,
+                        end: pos.end + change.string.length
+                    };
+
+                    if (change.type === 'del') return {
+                        start: isInFront ? pos.start - change.length : pos.start,
+                        end: pos.end - change.length
+                    };
+
+                    throw new Error('Cannot deal with change ' + Objects.inspect(change));
+                }, {start: target.start, end: target.end});
+
+            var helper = lively.ast.transform.helper,
+                source = sourceChanges.source,
+                replacement = replacementFunc(target, source.slice(pos.start, pos.end), insideChangedBefore),
+                replacementSource = Object.isArray(replacement) ?
+                    replacement.map(helper._node2string).join('\n' + helper._findIndentAt(source, pos.start)):
+                    replacementSource = helper._node2string(replacement);
+
+            var changes = [{type: 'del', pos: pos.start, length: pos.end - pos.start},
+                          {type: 'add', pos: pos.start, string: replacementSource}];
+
+            return {
+                changes: sourceChanges.changes.concat(changes),
+                source: this._applyChanges(changes, source)
+            };
+        },
+
+        replaceNodes: function(targetAndReplacementFuncs, sourceOrChanges) {
+            // replace multiple AST nodes, order rewriting from inside out and
+            // top to bottom so that nodes to rewrite can overlap or be contained
+            // in each other
+            return targetAndReplacementFuncs.sort(function(a, b) {
+                return lively.ast.transform.helper._compareNodesForReplacement(a.target, b.target);
+            }).reduce(function(sourceChanges, ea) {
+                return lively.ast.transform.helper.replaceNode(ea.target, ea.replacementFunc, sourceChanges);
+            }, typeof sourceOrChanges === 'object' ?
+                sourceOrChanges : {changes: [], source: sourceOrChanges});
+        }
+
     },
 
-    replaceNodeWithMany: function(ast, targetNode, replacementNodes) {
-        var targetStatement = acorn.walk.findStatementOfNode(ast, targetNode);
-
-        var pathToNode;
-        lively.ast.acorn.withMozillaAstDo(ast, {}, function(next, node, state, depth, path) {
-            if (pathToNode) return; // already found
-            else if (node === targetStatement) pathToNode = path;
-            else next();
-        });
-
-        if (!pathToNode) return ast;
-
-        var copy = acorn.walk.copy(ast);
-        var block = lively.PropertyPath(pathToNode.slice(0,-1)).get(copy);
-        block.splice.apply(block, [pathToNode.last(), 1].concat(replacementNodes));
-
-        return copy;
-    },
-
-    replaceTopLevelVarDeclsWithAssignment: function(ast, assignToObj) {
-        // replaces var and function declarations with assignment statements.
+    replace: function(astOrSource, targetNode, replacementFunc, options) {
+        // replaces targetNode in astOrSource with what replacementFunc returns
+        // (one or multiple ast nodes)
         // Example:
-        //    ast = lively.ast.acorn.parse("var x = 3, y = 2");
-        //    ast2 = lively.ast.transform.replaceTopLevelVarDeclsWithAssignment(ast, {name: "A", type: "Identifier"});
-        //    src = lively.ast.acorn.stringify(ast2); // => "A.x = 3; A.y = 2;"
+        // var ast = lively.ast.acorn.parse('foo.bar("hello");')
+        // lively.ast.transform.replace(
+        //     ast, ast.body[0].expression,
+        //     function(node, source) {
+        //         return {type: "CallExpression",
+        //             callee: {name: node.arguments[0].value, type: "Identifier"},
+        //             arguments: [{value: "world", type: "Literal"}]
+        //         }
+        //     });
+        // => {
+        //      source: "hello('world');",
+        //      changes: [{pos: 0,length: 16,type: "del"},{pos: 0,string: "hello('world')",type: "add"}]
+        //    }
 
-        // transform "var x = 3, y = 2;" into "var x = 3; var y = 2;"
-        ast = lively.ast.transform.oneDeclaratorPerVarDecl(ast);
+        var ast = typeof astOrSource === 'object' ? astOrSource : null,
+            source = typeof astOrSource === 'string' ?
+                astOrSource : (ast.source || lively.ast.acorn.stringify(ast)),
+            result = lively.ast.transform.helper.replaceNode(targetNode, replacementFunc, source);
 
-        var decls = lively.ast.query.topLevelDecls(ast).groupByKey('type'),
-            funcDecls = decls.FunctionDeclaration || [],
-            varDecls = decls.VariableDeclaration || [],
-            astCopy = makeCopy(ast),
-            topLevelScope = lively.ast.query.topLevelScope(astCopy);
+        return result;
+    },
 
-        funcDecls.forEach(function(decl) {
-            topLevelScope.body.unshift(assign(decl.id, decl.id));
-        });
+    replaceTopLevelVarDeclAndUsageForCapturing: function(astOrSource, assignToObj) {
+        /* replaces var and function declarations with assignment statements.
+         * Example:
+              lively.ast.transform.replaceTopLevelVarDeclAndUsageForCapturing(
+                  "var x = 3, y = 2",
+                  {name: "A", type: "Identifier"}).source;
+              // => "A.x = 3; A.y = 2;"
+         */
 
-        return astCopy;
+        var ast = typeof astOrSource === 'object' ?
+                astOrSource : lively.ast.acorn.parse(astOrSource),
+            source = typeof astOrSource === 'string' ?
+                astOrSource : (ast.source || lively.ast.acorn.stringify(ast)),
+            topLevel = lively.ast.query.topLevelDeclsAndRefs(ast);
+
+        // 1. make all references declared in the toplevel scope into property
+        // reads of assignToObj
+        // Example "var foo = 3; 99 + foo;" -> "var foo = 3; 99 + Global.foo;"
+        var result = lively.ast.transform.helper.replaceNodes(
+            topLevel.refs.map(function(ref) {
+                return {
+                    target: ref,
+                    replacementFunc: function(ref) {
+                        return {
+                            type: "MemberExpression", computed: false,
+                            object: assignToObj, property: ref
+                        }
+                    }
+                }
+            }), source);
+
+        // 2. turn var declarations into assignments to assignToObj
+        // Example: "var foo = 3; 99 + foo;" -> "Global.foo = 3; 99 + foo;"
+        result = lively.ast.transform.helper.replaceNodes(
+            topLevel.varDecls.map(function(decl) {
+                return {
+                    target: decl,
+                    replacementFunc: function(declNode, s, wasChanged) {
+                        if (wasChanged) {
+                            var scopes = lively.ast.query.scopes(lively.ast.acorn.parse(s, {addSource: true}));
+                            declNode = scopes.varDecls[0]
+                        }
+                        return declNode.declarations.map(function(ea) {
+                            return assign(ea.id, ea.init);
+                        });
+                    }
+                }
+            }), result);
+
+        // 3. assignments for function declarations in the top level scope are
+        // put in front of everything else:
+        // "return bar(); function bar() { return 23 }" -> "Global.bar = bar; return bar(); function bar() { return 23 }"
+        if (topLevel.funcDecls.length) {
+            var globalFuncs = topLevel.funcDecls.map(function(decl) {
+                var funcId = {type: "Identifier", name: decl.id.name};
+                return lively.ast.acorn.stringify(assign(funcId, funcId));
+            }).join('\n');
+
+
+            var change = {type: 'add', pos: 0, string: globalFuncs};
+            result = {
+                source: globalFuncs + '\n' + result.source,
+                changes: result.changes.concat([change])
+            }
+        }
+
+        return result;
 
         // -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
@@ -1152,46 +1502,44 @@ Object.extend(lively.ast.transform, {
             }
         }
 
-        function makeCopy(ast) {
-            return acorn.walk.copy(ast, {
-            
-                VariableDeclaration: function(n, c) {
-                    return varDecls.include(n) ?
-                        assign(n.declarations[0].id, n.declarations[0].init) :
-                        {
-                            start: n.start, end: n.end, type: 'VariableDeclaration',
-                            declarations: n.declarations.map(c), kind: n.kind,
-                            source: n.source, astIndex: n.astIndex
-                        };
-                }
-            
-            })
-        }
-
     },
 
-    oneDeclaratorPerVarDecl: function(ast) {
-        // ast=lively.ast.acorn.parse(that.textString)
-        
-        var decls = [];
-        lively.ast.acorn.withMozillaAstDo(ast, {}, function(next, node, state, depth, path) {
-            if (node.type === "VariableDeclaration") decls.push(node);
-            next();
+    oneDeclaratorPerVarDecl: function(astOrSource) {
+        // lively.ast.transform.oneDeclaratorPerVarDecl(
+        //    "var x = 3, y = (function() { var y = 3, x = 2; })(); ").source
+
+        var ast = typeof astOrSource === 'object' ?
+                astOrSource : lively.ast.acorn.parse(astOrSource),
+            source = typeof astOrSource === 'string' ?
+                astOrSource : (ast.source || lively.ast.acorn.stringify(ast)),
+            scope = lively.ast.query.scopes(ast),
+            varDecls = (function findVarDecls(scope) {
+                return scope.varDecls
+                    .concat(scope.subScopes.map(findVarDecls))
+                    .flatten();
+            })(scope);
+
+        var targetsAndReplacements = varDecls.map(function(decl) {
+            return {
+                target: decl,
+                replacementFunc: function(declNode, s, wasChanged) {
+                    if (wasChanged) {
+                        // reparse node if necessary, e.g. if init was changed before like in
+                        // var x = (function() { var y = ... })();
+                        declNode = lively.ast.acorn.parse(s).body[0];
+                    }
+
+                    return declNode.declarations.map(function(ea) {
+                        return {
+                            type: "VariableDeclaration",
+                            kind: "var", declarations: [ea]
+                        }
+                    });
+                }
+            }
         });
 
-        var replacements = decls.map(function(decl) {
-            return {
-                decl: decl,
-                replacement: decl.declarations.map(function(ea) {
-                    return {type: "VariableDeclaration", kind: "var", declarations: [ea]}
-                })
-            };
-        })
-
-        return replacements.reduce(function(ast, r) {
-            return lively.ast.transform.replaceNodeWithMany(ast, r.decl, r.replacement)
-        }, acorn.walk.copy(acorn.walk.addAstIndex(ast)));
-        
+        return lively.ast.transform.helper.replaceNodes(targetsAndReplacements, source);
     },
 
     returnLastStatement: function(source) {
