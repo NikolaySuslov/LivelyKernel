@@ -50,6 +50,7 @@ Object.subclass('lively.PartsBin.PartItem',
     setPartFromJSON: function(json, metaInfo, rev) {
         var part = this.deserializePart(json, metaInfo);
         part.partsBinMetaInfo.revisionOnLoad = rev;
+        part.partsBinMetaInfo.lastModifiedDate = metaInfo.lastModifiedDate;
         this.setPart(part);
     },
 
@@ -274,7 +275,9 @@ Object.subclass('lively.PartsBin.PartItem',
             connect(webR, 'content', this, 'loadedMetaInfo', {updater: function($upd, json) {
                 if (!this.sourceObj.status.isSuccess()) return $upd(null);
                 if (!this.sourceObj.status.isDone()) return;
-                $upd(lively.persistence.Serializer.deserialize(json));
+                var metaInfo = lively.persistence.Serializer.deserialize(json);
+                metaInfo.lastModifiedDate = source.lastModified;
+                $upd(metaInfo);
             }});
             webR.forceUncached().get();
             return this;
@@ -284,12 +287,12 @@ Object.subclass('lively.PartsBin.PartItem',
             query = !!rev ?
                 {
                     paths: [path],
-                    attributes: ['content'],
+                    attributes: ['content', 'date'],
                     version: rev,
                     limit: 1
                 } : {
                     paths: [path],
-                    attributes: ['content'],
+                    attributes: ['content', 'date'],
                     newest: true,
                     limit: 1
                 };
@@ -299,7 +302,9 @@ Object.subclass('lively.PartsBin.PartItem',
                 show(err);
                 self.loadedMetaInfo = null
             } else {
-                self.loadedMetaInfo = lively.persistence.Serializer.deserialize(rows[0].content);
+                var metaInfo = lively.persistence.Serializer.deserialize(rows[0].content)
+                metaInfo.lastModifiedDate = new Date(rows[0].date);
+                self.loadedMetaInfo = metaInfo;
             }
         });
     },
@@ -317,6 +322,9 @@ Object.subclass('lively.PartsBin.PartItem',
     moveToPartsSpace: function(partsSpace) {
         var newItem = this.copyToPartsSpace(partsSpace);
         this.del();
+        if (this.part) {
+            this.part.getPartsBinMetaInfo().setPartsSpace(partsSpace);
+        }
         return newItem;
     },
 
@@ -328,7 +336,7 @@ Object.subclass('lively.PartsBin.PartItem',
         new WebResource(this.getMetaInfoURL()).beAsync().del();
     },
 
-    uploadPart: function(checkForOverwrite) {
+    uploadPart: function(checkForOverwrite, isSync) {
         if (!this.part) {
             alert('Cannot upload part item ' + this.name + ' because there is no part!')
             return;
@@ -344,7 +352,7 @@ Object.subclass('lively.PartsBin.PartItem',
 
         // 2. start the upload...
         var webR = new WebResource(this.getFileURL())
-            .beAsync()
+            [isSync ? 'beSync' : 'beAsync']()
             .createProgressBar('Uploading ' + name);
 
         // 3. setup overwrite check

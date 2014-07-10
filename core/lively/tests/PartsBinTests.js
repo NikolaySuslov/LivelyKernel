@@ -1,6 +1,6 @@
-module('lively.tests.ScriptingTests').requires('lively.TestFramework', 'lively.PartsBin').toRun(function() {
+module('lively.tests.PartsBinTests').requires('lively.TestFramework', 'lively.PartsBin').toRun(function() {
 
-TestCase.subclass('lively.tests.ScriptingTests.OnlinePartsBinTest',
+TestCase.subclass('lively.tests.PartsBinTests.OnlinePartsBinTest',
 'running', {
 	deleteURLAfterTest: function(url) {
 		if (!this.urlsForDeletion) this.urlsForDeletion = [];
@@ -40,33 +40,36 @@ TestCase.subclass('lively.tests.ScriptingTests.OnlinePartsBinTest',
 		this.assert(item.part, 'part not loaded!')
 		this.assert(item.part.name.startsWith('TestObject'));
 	},
+    testOverwriteTest: function() {
+		var partsSpace = lively.PartsBin.partsSpaceNamed('PartsBin'),
+			item = partsSpace.getPartItemNamed('TestObject');
+		item.loadPart();
+		var asked = false;
+		var morph = item.part, newItem = morph.getPartItem();
+		(function askToOverwrite(url) {
+            asked = true;
+		}).addToObject(newItem, 'askToOverwrite')
+		newItem.uploadPart(true, true);
+		this.assert(asked === false, 'asked when it shouldnt have');
+		this.assertEquals(newItem.part, morph);
+		// setTime modifies the object, also updating all the other places where it is referenced
+		morph.getPartsBinMetaInfo().lastModifiedDate.setTime(Date.now() - 10^3);
+		newItem.uploadPart(true, true);
+		this.assert(asked === true, 'didnt ask when it should have');
+    },
 	testPartGetsUpdatedMetaInfo: function() {
 		var partsSpace = lively.PartsBin.partsSpaceNamed('PartsBin'),
 			item = partsSpace.getPartItemNamed('TestObject'),
 			id = Date.now();
 		item.loadPartMetaInfo().loadedMetaInfo.id = id;
+		this.assertEquals(item.getMetaInfo().id, id, 'setting the value to be tested failed.');
 		item.uploadMetaInfoOnly();
 		item.loadPart();
 		this.assertEquals(id, item.part.getPartsBinMetaInfo().id, 'meta info not updated!')
 	},
-	testLoadPartVersions: function() {
-		var partsSpace = lively.PartsBin.partsSpaceNamed('PartsBin'),
-			item = partsSpace.getPartItemNamed('TestObject');
-		item.loadPartVersions();
-		this.assert(item.partVersions, 'partVetsions not loaded!')
-		this.assert(item.partVersions.length > 0, 'no partVersiosn');
-	},
-	testLoadRevision: function() {
-		var partsSpace = lively.PartsBin.partsSpaceNamed('PartsBin'),
-			item = partsSpace.getPartItemNamed('TestObject');
-		var rev = item.loadPartVersions().partVersions.last().rev;
-		var obj = item.loadRevision(rev);
-		this.assertEquals(obj.name , 'TestObject')
-	},
-
 	testCreatePartsSpace: function() {
 		var name = 'PartsBin/testCreatePartsSpace/',
-			url = URL.codeBase.withFilename(name),
+			url = URL.common.domain.withFilename(name),
 			partsSpace = lively.PartsBin.addPartsSpaceNamed(name);
 		this.deleteURLAfterTest(url)
 		partsSpace.ensureExistance();
@@ -77,7 +80,7 @@ TestCase.subclass('lively.tests.ScriptingTests.OnlinePartsBinTest',
 	testCopyPartItem: function() {
 		// create a parts space
 		var name = 'PartsBin/testCopyPartItemTarget/',
-			url = URL.codeBase.withFilename(name),
+			url = URL.common.domain.withFilename(name),
 			partsSpaceTo = lively.PartsBin.addPartsSpaceNamed(name);
 		this.deleteURLAfterTest(url)
 		partsSpaceTo.ensureExistance();
@@ -100,14 +103,14 @@ TestCase.subclass('lively.tests.ScriptingTests.OnlinePartsBinTest',
 	testMovePartItem: function() {
 		// create a parts space to copy the part to
 		var name = 'PartsBin/TestSpace1/',
-			url = URL.codeBase.withFilename(name),
+			url = URL.common.domain.withFilename(name),
 			partsSpace1 = lively.PartsBin.addPartsSpaceNamed(name);
 		this.deleteURLAfterTest(url)
 		partsSpace1.ensureExistance();
 
 		// create a parts space to move the part to
 		var name = 'PartsBin/TestSpace2/',
-			url = URL.codeBase.withFilename(name),
+			url = URL.common.domain.withFilename(name),
 			partsSpace2 = lively.PartsBin.addPartsSpaceNamed(name);
 		this.deleteURLAfterTest(url)
 		partsSpace2.ensureExistance();
@@ -115,9 +118,9 @@ TestCase.subclass('lively.tests.ScriptingTests.OnlinePartsBinTest',
 		var item = lively.PartsBin.getPartItem('TestObject');
 		item.copyToPartsSpace(partsSpace1);
 
-		var item2 = partsSpace1.getPartItemNamed(item.name).loadPart()
+		var item2 = partsSpace1.getPartItemNamed(item.name).loadPart();
 
-		item2.moveToPartsSpace(partsSpace2)
+		item2.moveToPartsSpace(partsSpace2);
 
 		partsSpace1.load();
 		partsSpace2.load();
@@ -126,33 +129,61 @@ TestCase.subclass('lively.tests.ScriptingTests.OnlinePartsBinTest',
 		this.assert(partsSpace2.partItems['TestObject'], 'part item not moved to target space!');
 		this.assertEquals(partsSpace2.getName(), item2.part.getPartsBinMetaInfo().getPartsSpaceName());
 	},
-	testGetHeadRevision: function() {
-		var partsSpace = lively.PartsBin.partsSpaceNamed('PartsBin'),
-			item = partsSpace.getPartItemNamed('TestObject');
-		var rev = item.getHeadRevision();
-        alertOK('all revs ' + item.loadPartVersions().partVersions)
-        var lastRev = item.loadPartVersions().partVersions.first().rev;
-        this.assertEquals(rev, lastRev , 'revs not equal')
-	},
 	testLoadPartHasRevisionOnLoad: function() {
 		var partsSpace = lively.PartsBin.partsSpaceNamed('PartsBin'),
 			item = partsSpace.getPartItemNamed('TestObject');
 		item.loadPart();
-		this.assert(item.part.partsBinMetaInfo.revisionOnLoad, 'no revision on load')
+		this.assert(item.part.partsBinMetaInfo.revisionOnLoad || item.part.partsBinMetaInfo.lastModifiedDate, 'no revision on load')
 	},
 	testUpdateRevisionOnLoadAfterPublishing: function() {
 		var partsSpace = lively.PartsBin.partsSpaceNamed('PartsBin'),
 			item = partsSpace.getPartItemNamed('TestObject');
 		item.loadPart();
-		var oldRevisionOnLoad = item.part.partsBinMetaInfo.revisionOnLoad;
+		var oldRevision = item.part.partsBinMetaInfo.revisionOnLoad
+		    || item.part.partsBinMetaInfo.lastModifiedDate;
 
-        item.uploadPart();
-        this.assert(oldRevisionOnLoad !== item.part.partsBinMetaInfo.revisionOnLoad,
-                    'rev did not change')
+        item.uploadPart(false, true);
+        var newRevision = item.part.partsBinMetaInfo.revisionOnLoad
+            || item.part.partsBinMetaInfo.lastModifiedDate;
+        this.assert(oldRevision !== newRevision, 'rev did not change')
 	}
-})
+});
 
-tests.ScriptingTests.OnlinePartsBinTest.subclass('lively.tests.ScriptingTests.DroppableBehaviorTest',
+AsyncTestCase.subclass('lively.tests.PartsBinTests.AsyncOnlinePartsBinTest', {
+	testLoadPartVersions: function() {
+		var partsSpace = lively.PartsBin.partsSpaceNamed('PartsBin'),
+			item = partsSpace.getPartItemNamed('TestObject');
+		connect(item, "partVersions", {cb : function() {
+            this.assert(item.partVersions, 'partVetsions not loaded!')
+            this.assert(item.partVersions.length > 0, 'no partVersiosn');
+            this.done();
+		}.bind(this)}, "cb", {removeAfterUpdate: true})
+		item.loadPartVersions();
+	},
+	testLoadRevision: function() {
+		var partsSpace = lively.PartsBin.partsSpaceNamed('PartsBin'),
+			item = partsSpace.getPartItemNamed('TestObject');
+		connect(item, "partVersions", {cb : function() {
+            var rev = item.loadPartVersions().partVersions.last().rev;
+            var obj = item.loadRevision(rev);
+            this.assertEquals(obj.name , 'TestObject');
+            this.done();
+		}.bind(this)}, "cb", {removeAfterUpdate: true})
+		item.loadPartVersions();
+	},
+	deleteURLAfterTest: function(url) {
+		if (!this.urlsForDeletion) this.urlsForDeletion = [];
+		this.urlsForDeletion.push(url);
+	},
+	tearDown: function($super) {
+		$super();
+		lively.PartsBin.partsSpaceNamed('PartsBin').clearCache();
+		if (this.urlsForDeletion)
+			this.urlsForDeletion.forEach(function(url) { new WebResource(url).del() })
+	},
+});
+
+lively.tests.PartsBinTests.OnlinePartsBinTest.subclass('lively.tests.PartsBinTests.DroppableBehaviorTest',
 'helper', {
 	get: function(name) {
 		return lively.PartsBin.getPart(name, 'PartsBin/DroppableBehaviors');
@@ -173,7 +204,7 @@ tests.ScriptingTests.OnlinePartsBinTest.subclass('lively.tests.ScriptingTests.Dr
 	}
 });
 
-TestCase.subclass('lively.tests.ScriptingTests.MetaInfo',
+TestCase.subclass('lively.tests.PartsBinTests.MetaInfo',
 'running', {
     setUp: function($super) {
         $super();
