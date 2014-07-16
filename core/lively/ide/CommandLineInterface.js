@@ -164,7 +164,7 @@ lively.ide.CommandLineInterface.Command.subclass('lively.ide.CommandLineInterfac
     isRunning: function() { return !this.isDone() && !!this.getPid(); }
 },
 "connection", {
-    
+
     isOnline: function() {
         var s = this.getSession();
         return s && s.isConnected();
@@ -275,8 +275,10 @@ lively.ide.CommandLineInterface.Command.subclass('lively.ide.CommandLineInterfac
 });
 
 Object.extend(lively.ide.CommandLineInterface, {
+
     rootDirectory: null,
     commandQueue: {},
+
     reset: function() {
         this.rootDirectory = null,
         this.commandQueue && Properties.forEachOwn(this.commandQueue, function(group, cmds) {
@@ -360,6 +362,9 @@ Object.extend(lively.ide.CommandLineInterface, {
         if (lively2LivelyShellAvailable) {
             var env = options
             options.env = Object.extend(options.env || {}, {
+                "L2L_ASKPASS_SSL_CA_FILE": lively.Config.askpassSSLcaFile || "",
+                "L2L_ASKPASS_SSL_KEY_FILE": lively.Config.askpassSSLkeyFile || "",
+                "L2L_ASKPASS_SSL_CERT_FILE": lively.Config.askpassSSLcertFile || "",
                 "ASKPASS_SESSIONID": session.sessionId,
                 "L2L_EDITOR_SESSIONID": session.sessionId,
                 "EDITOR": "lively-as-editor.sh",
@@ -477,6 +482,16 @@ Object.extend(lively.ide.CommandLineInterface, {
         if (options.onEnd) lively.bindings.connect(cmd, 'end', options, 'onEnd');
         if (thenDo) lively.bindings.connect(cmd, 'end', {thenDo: thenDo}, 'thenDo');
         return cmd;
+    },
+
+    downloadFile: function(path, options, thenDo) {
+        this.commandLineServerURL
+            .withFilename("download-file")
+            .withQuery({path: path})
+            .asWebResource().beAsync()
+            .get().whenDone(function(_, status) {
+                thenDo && thenDo(status.isSuccess() ? null : status);
+            });
     },
 
     diffIgnoringWhiteSpace: function(string1, string2, thenDo) {
@@ -1035,119 +1050,6 @@ Object.subclass("lively.ide.FilePatchHunk",
 Object.extend(lively.ide.FilePatchHunk, {
     read: function(patchString) { return new this().read(patchString); }
 });
-
-lively.ide.CommandLineInterface.GitSupport = {
-    getScriptBaseName: function(sessionId) {
-        return 'git-askpass_' + sessionId.split(':').last();
-    },
-    getAskPassScriptTemplate: function() {
-        return     "/*\n"
-                 + " * This script conforms to and can be used as SSH_ASKPASS / GIT_ASKPASS tool.\n"
-                 + " * It will be called by ssh/git with a query string as process.argv[2]. This\n"
-                 + " * script will then connect to a Lively session via websocket/lively-json\n"
-                 + " * protocol and prompt the query. The prompt input will be written to stdout.\n"
-                 + " */\n"
-                 + "// control stdout/err output:\n"
-                 + "var stdoutWrite = process.stdout.write;\n"
-                 + "var stderrWrite = process.stderr.write;\n"
-                 + "process.stderr.write = function() {};\n"
-                 + "process.stdout.write = function() {};\n"
-                 + "if (!process.env.WORKSPACE_LK) process.env.WORKSPACE_LK = __dirname;\n"
-                 + "var path = require(\"path\"),\n"
-                 + "    clientSessionId = '__SESSIONID__',\n"
-                 + "    sessionTrackerURL = '__TRACKERURL__',\n"
-                 + "    ws = require(path.join(process.env.WORKSPACE_LK, 'core/servers/support/websockets')),\n"
-                 + "    wsClient = new ws.WebSocketClient(sessionTrackerURL, {protocol: 'lively-json', sender: 'GitAuth', debugLevel: 10});\n"
-                 + "function sendQuery(query, thenDo) {\n"
-                 + "    wsClient.send({\n"
-                 + "        action: 'askFor',\n"
-                 + "        data: {query: query},\n"
-                 + "        target: clientSessionId\n"
-                 + "    }, processAnswer);\n"
-                 + "}\n"
-                 + "function processAnswer(answerMsg) {\n"
-                 + "    wsClient && wsClient.close();\n"
-                 + "    stdoutWrite.call(process.stdout, answerMsg.data.answer ?\n"
-                 + "        answerMsg.data.answer + '\\n' : '');\n"
-                 + "}\n"
-                 + "wsClient.on('connect', function() {\n"
-                 + "    sendQuery(process.argv[2] || 'No query from GitAsk');\n"
-                 + "});\n"
-                 + "wsClient.connect();\n"
-    },
-
-    createGitAskPassScript: function(thenDo) {
-        var sess = lively.net.SessionTracker.getSession(), gitSupport = this;
-        if (!sess || !sess.isConnected()) { thenDo({error: 'No Lively2Lively session!'}, null); return; }
-        var scriptFile, scriptSource, cmdFile, cmdFileFullPath, cmdSource, isWindows = false;
-        function prepareScript(next) {
-            scriptSource = gitSupport.getAskPassScriptTemplate()
-                .replace('__TRACKERURL__', sess.sessionTrackerURL+'connect')
-                .replace('__SESSIONID__', sess.sessionId);
-            var baseName = gitSupport.getScriptBaseName(sess.sessionId);
-            scriptFile = baseName + '.js';
-            cmdFile = scriptFile + '.cmd';
-            next();
-        }
-        function writeScript(next) {
-            URL.root.withFilename(scriptFile).asWebResource().beAsync().put(scriptSource, 'text/plain').whenDone(function(_, status) {
-                if (!status.isSuccess()) { thenDo({error: 'Could not write askpass script: ' + status}, null); return; }
-                next();
-            });
-        }
-        function determinePlatform(next) {
-            var platform = lively.ide.CommandLineInterface.getServerPlatform();
-            isWindows = platform !== 'linux' && platform !== 'darwin' && platform.include('win');
-            next();
-        }
-        function fullPathToCommandFile(next) {
-            new WebResource(Config.nodeJSURL + '/' + 'NodeJSEvalServer/').beAsync().post('require("path").join(process.env.WORKSPACE_LK,"' + cmdFile + '")', 'text/plain').whenDone(function(result, status) {
-                cmdFileFullPath = result && String(result); next();
-            });
-        }
-        function writeCommand(next) {
-            if (isWindows) {
-                cmdSource = Strings.format("@setlocal enableextensions enabledelayedexpansion\n"
-                                         + "@echo off\n"
-                                         + "node.exe %s %*\n", '%WORKSPACE_LK%\\'+scriptFile);
-            } else {
-                cmdSource = '#!/usr/bin/env bash\n\nnode $WORKSPACE_LK/' + scriptFile + ' $1';
-            }
-            URL.root.withFilename(cmdFile).asWebResource().beAsync().put(cmdSource, 'text/plain').whenDone(function(_, status) {
-                if (!status.isSuccess()) { thenDo({error: 'Could not write askpass command: ' + status}, null); return; }
-                next();
-            });
-        }
-        function makeCommmandExecutable(next) {
-            if (isWindows) { next(); return; }
-            lively.shell.exec('chmod a+x $WORKSPACE_LK/'+cmdFile, {}, function(cmd) {
-                if (cmd.getCode()) { thenDo({error: 'Could not make script executable!'}, null); return; }
-                next();
-            });
-        }
-        [prepareScript, writeScript, determinePlatform, fullPathToCommandFile, writeCommand, makeCommmandExecutable].doAndContinue(null, function() {
-            thenDo(null, cmdFileFullPath);
-        });
-    },
-
-    removeGitAskPassScript: function(thenDo) {
-        var session = lively.net.SessionTracker.getSession(),
-            sessionId = session && session.sessionId;
-        if (!sessionId) {
-            console.warn('Could not remove git ask-pass script: no session or no sessionId!');
-            return;
-        }
-        var baseName = this.getScriptBaseName(sessionId),
-            scriptFile = baseName + '.js',
-            cmdFile = scriptFile + '.cmd';
-        [scriptFile, cmdFile].doAndContinue(function(next, fn) {
-            URL.root.withFilename(fn).asWebResource().beAsync().del().whenDone(function(_, status) {
-                if (status.isSuccess()) console.warn('Removing %s: %s', fn, status);
-                next();
-            });
-        }, function() { thenDo(); });
-    }
-};
 
 lively.ide.CommandLineInterface.SpellChecker = {
     spellCheckWord: function(word, thenDo) {
