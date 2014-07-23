@@ -267,9 +267,14 @@
             }
         }
 
+        platformConsole.removeWrappers = removeWrappers;
+        platformConsole.addWrappers = addWrappers;
+
         platformConsole.addConsumer = function(c) {
-            addWrappers();
-            consumers.push(c);
+            if (consumers.indexOf(c === -1)) {
+                addWrappers();
+                consumers.push(c);
+            }
         };
 
         platformConsole.removeConsumer = function(c) {
@@ -604,6 +609,15 @@
                 }
             });
             return null;
+        },
+
+        forcedReload: function(someURL, onLoadCb) {
+            var url = this.makeAbsolute(someURL);
+            if (this.loadedURLs.indexOf(url) !== -1) {
+                this.loadedURLs.splice(this.loadedURLs.indexOf(url), 1)
+            }
+            JSLoader.removeAllScriptsThatLinkTo(url);
+            this.loadJs(url, onLoadCb);
         },
 
         loadViaScript: function(url, onLoadCb) {
@@ -1000,7 +1014,6 @@
             }
 
             var requiredModulesForWorldStart = [
-                'lively.ChangeSets',
                 'lively.lang.Closure',
                 'lively.bindings',
                 'lively.Main'];

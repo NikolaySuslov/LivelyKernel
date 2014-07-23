@@ -2,7 +2,7 @@ module('lively.lang.VM').requires().toRun(function() {
 
 Object.extend(lively.lang.VM, {
 
-    transformForVarRecord: function(code, varRecorderName) {
+    transformForVarRecord: function(code, varRecorder, varRecorderName) {
         // variable declaration and references in the the source code get
         // transformed so that they are bound to `varRecorderName` aren't local
         // state. THis makes it possible to capture eval results, e.g. for
@@ -10,7 +10,8 @@ Object.extend(lively.lang.VM, {
         // incrementally evaluating var declarations and having values bound later.
         try {
             var transformed = lively.ast.transform.replaceTopLevelVarDeclAndUsageForCapturing(
-                code, {name: varRecorderName, type: "Identifier"});
+                code, {name: varRecorderName, type: "Identifier"},
+                {ignoreUndeclaredExcept: Object.keys(varRecorder).without(varRecorderName)});
             code = transformed.source;
         } catch(e) {
             if (lively.Config.showImprovedJavaScriptEvalErrors) $world.logError(e)
@@ -54,12 +55,14 @@ Object.extend(lively.lang.VM, {
         
         var vm = lively.lang.VM, result, err,
             context = options.context || vm.getGlobal(),
-            recorder = options.topLevelVarRecorder;
+            recorder = options.topLevelVarRecorder,
+            varRecorderName = options.varRecorderName || '__lvVarRecorder';
 
-        if (recorder) code = vm.transformForVarRecord(code, '__lvVarRecorder');
+        if (recorder) code = vm.transformForVarRecord(code, recorder, varRecorderName);
         code = vm.transformSingleExpression(code);
 
         $morph('log') && ($morph('log').textString = code);
+
         try {
             result = vm._eval.call(context, code, recorder);
         } catch (e) { err = e; } finally { thenDo(err, result); }

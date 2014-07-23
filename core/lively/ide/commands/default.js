@@ -77,10 +77,17 @@ Object.extend(lively.ide.commands.byName, {
             $world.askForUserName(); return true;
         }
     },
+
     'lively.morphic.World.setExtent': {
         description: 'set world extent',
         exec: function() { $world.askForNewWorldExtent(); }
     },
+
+    'lively.morphic.World.setExtentToWindowBounds': {
+        description: 'set world extent to fit into window bounds',
+        exec: function() { $world.setExtent($world.windowBounds().extent()); }
+    },
+
     'lively.morphic.World.resetScale': {
         description: 'reset world scale',
         exec: function() { $world.setScale(1); }
@@ -808,32 +815,68 @@ Object.extend(lively.ide.commands.byName, {
         description: 'execute shell command',
         exec: function(codeEditor, args) {
             Global.event.stop();
-            var insertResult = !args || typeof args.insert === 'undefined' || !!args.insert,
-                openInWindow = !codeEditor || (args && args.count !== 4)/*universal argument*/,
-                addToHistory = args && args.addToHistory,
-                group = (args && args.group) || 'interactive-shell-command';
+
+            var insertResult   = !args || typeof args.insert === 'undefined' || !!args.insert,
+                insertProgress = args  && !!args.insertProgress,
+                openInWindow   = !codeEditor || (args && args.count !== 4)/*universal argument*/,
+                addToHistory   = args && args.addToHistory,
+                group          = (args && args.group) || 'interactive-shell-command',
+                editor;
+
+            var cmdString = args && args.shellCommand;
+            if (cmdString) runCommand(cmdString);
+            else {
+                $world.prompt('Enter shell command to run.', function(cmdString) {
+                    if (!cmdString) show('No command entered, aborting...!');
+                    else runCommand(cmdString);
+                }, {historyId: 'lively.ide.execShellCommand'}).panel.focus();
+            };
+
+            // -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
             function ensureCodeEditor(title) {
+                if (editor) return editor;
                 if (!openInWindow && codeEditor && codeEditor.isCodeEditor) return codeEditor;
                 var ed = $world.addCodeEditor({
                     title: 'shell command: ' + title,
                     gutter: false, textMode: 'text',
                     extent: pt(400, 500), position: 'center'});
                 ed.owner.comeForward();
-                return ed;
+                return editor = ed;
             }
+
             function runCommand(command) {
-                lively.shell.run(command, {addToHistory: addToHistory, group: group}, function(cmd) {
-                    insertResult && ensureCodeEditor(command).printObject(null, cmd.resultString(true));
+                var ed = ensureCodeEditor(command), mergeUndos;
+
+                var title = ed.getWindow().getTitle();
+                if (ed.getWindow()) ed.getWindow().setTitle("[running] " + title);
+
+                ed.mergeUndosOf(function(triggerMerge) {
+                    mergeUndos = triggerMerge;
+
+                    var cmd = lively.shell.run(command, {addToHistory: addToHistory, group: group}, function(cmd) {
+                        if (!insertProgress && insertResult)
+                            ed.printObject(null, cmd.resultString(true));
+
+                        if (ed.getWindow()) ed.getWindow().setTitle(title);
+
+                        mergeUndos && mergeUndos();
+                    });
+
+                    if (insertProgress) {
+                        ed.collapseSelection('end');
+                        ed.addScript(function insertAndGrowSelection(string) {
+                            var rangeBefore = this.getSelectionRangeAce();
+                            this.printObject(null,string);
+                            var rangeAfter = this.getSelectionRangeAce();
+                            this.setSelectionRangeAce({start: rangeBefore.start, end: rangeAfter.end});
+                        });
+                        lively.bindings.connect(cmd, 'stdout', ed, 'insertAtCursor', {updater: function($upd, string) { $upd(string, false, false, true); }});
+                        lively.bindings.connect(cmd, 'stderr', ed, 'insertAtCursor', {updater: function($upd, string) { $upd(string, false, false, true); }});
+                    }
                 });
             }
-            var cmdString = args && args.shellCommand;
-            if (cmdString) runCommand(cmdString);
-            else {
-                $world.prompt('Enter shell command to run.', function(cmdString) {
-                    if (!cmdString) { show('No command entered, aborting...!'); return; }
-                    runCommand(cmdString);
-                }, {historyId: 'lively.ide.execShellCommand'}).panel.focus();
-            };
+
         }
     },
     'lively.ide.execShellCommandInWindow': {
@@ -931,6 +974,7 @@ Object.extend(lively.ide.commands.byName, {
 
     // tools
     'lively.ide.openWorkspace': {description: 'open Workspace', isActive: lively.ide.commands.helper.noCodeEditorActive, exec: function() { $world.openWorkspace(); return true; }},
+    'lively.ide.openTextWindow': {description: 'open Text window', isActive: lively.ide.commands.helper.noCodeEditorActive, exec: function() { $world.openTextWindow(); return true; }},
     'lively.ide.openSystemCodeBrowser': {description: 'open SystemCodeBrowser', isActive: lively.ide.commands.helper.noCodeEditorActive, exec: function() { $world.openSystemBrowser(); return true; }},
     'lively.ide.openObjectEditor': {description: 'open ObjectEditor', isActive: lively.ide.commands.helper.noCodeEditorActive, exec: function() { $world.openObjectEditor().comeForward(); return true; }},
     'lively.ide.openBuildSpecEditor': {description: 'open BuildSpecEditor', isActive: lively.ide.commands.helper.noCodeEditorActive, exec: function() { $world.openBuildSpecEditor(); return true; }},
@@ -957,6 +1001,13 @@ Object.extend(lively.ide.commands.byName, {
     'lively.ide.openShellWorkspace': {description: 'open ShellWorkspace', isActive: lively.ide.commands.helper.noCodeEditorActive, exec: function() { var codeEditor = $world.addCodeEditor({textMode: 'sh', theme: 'pastel_on_dark', title: 'Shell Workspace', content: "# You can evaluate shell commands in here\nls $PWD"}).getWindow().comeForward(); return true; }},
     'lively.ide.openVersionsViewer': {description: 'open VersionsViewer', exec: function(path) { $world.openVersionViewer(path); return true; }},
     'lively.ide.openGitControl': {description: 'open GitControl', isActive: lively.ide.commands.helper.noCodeEditorActive, exec: function() { $world.openGitControl(); return true; }},
+    'lively.ide.openLog': {
+        description: 'open log console',
+        exec: function() {
+            $world.openPartItem("SystemConsole", "PartsBin/Tools/");
+            return true;
+        }
+    },
     'lively.ide.openServerLog': {description: 'open ServerLog', isActive: lively.ide.commands.helper.noCodeEditorActive, exec: function() { require('lively.ide.tools.ServerLog').toRun(function() { lively.ide.tools.ServerLog.open(); }); return true; }},
     'lively.ide.openDiffer': {description: 'open text differ', isActive: lively.ide.commands.helper.noCodeEditorActive, exec: function() { require('lively.ide.tools.Differ').toRun(function() { lively.BuildSpec('lively.ide.tools.Differ').createMorph().openInWorldCenter().comeForward(); }); return true; }},
 
@@ -1318,6 +1369,31 @@ Object.extend(lively.ide.commands.byName, {
                 }
             });
             return true;
+        }
+    },
+
+    // debugging
+    'lively.ide.debugging.globalTrace': {
+        description: "start / stop global tracing",
+        exec: function() {
+            lively.require("lively.Tracing").toRun(function() {
+                var tracersInstalled = lively.Tracing && lively.Tracing.stackTracingEnabled,
+                    globalTracingEnabled = tracersInstalled && lively.Tracing.globalTracingEnabled;
+                if (!tracersInstalled) lively.Tracing.installStackTracers();
+                if (!globalTracingEnabled) lively.Tracing.startGlobalTracing();
+                else show("Tracing already in progress");
+            });
+        }
+    },
+
+    'lively.ide.debugging.globalTrace': {
+        description: "start / stop global tracing",
+        exec: function() {
+            lively.require("lively.Tracing").toRun(function() {
+                var tracersInstalled = lively.Tracing && lively.Tracing.stackTracingEnabled,
+                    globalTracingEnabled = tracersInstalled && lively.Tracing.globalTracingEnabled;
+                lively.Tracing.startGlobalTracing();
+            });
         }
     },
 

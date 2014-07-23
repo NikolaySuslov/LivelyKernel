@@ -303,7 +303,7 @@ Object.subclass("lively.ast.Rewriting.Rewriter",
         acorn.walk.matchNodes(ast, {
             'VariableDeclaration': function(node, state, depth, type) {
                 if (node.type != type) return; // skip Expression, Statement, etc.
-                node.declarations.each(function(n) {
+                node.declarations.forEach(function(n) {
                     // only if it has not been defined before (as variable or argument!)
                     if ((scope.localVars.indexOf(n.id.name) == -1) && (n.id.name != 'arguments')) {
                         state[n.id.name] = {
@@ -391,7 +391,7 @@ Object.subclass("lively.ast.Rewriting.Rewriter",
                         }),
                     this.newNode('ExpressionStatement', {
                         expression: this.newNode('CallExpression', {
-                            callee: this.newMemberExp('ex.createAndShiftFrame'),
+                            callee: this.newMemberExp('ex.storeFrameInfo'),
                             arguments: [
                                 this.newNode('Identifier', {name: 'this'}),
                                 this.newNode('Identifier', {name: 'arguments'}),
@@ -492,18 +492,61 @@ Object.subclass("lively.ast.Rewriting.Rewriter",
         });
     },
 
-    storeComputationResult: function(node, start, end, astIndex) {
+    simpleStoreComputationResult: function(node, astIndex) {
+        return this.newNode('AssignmentExpression', {
+            operator: '=',
+            left: this.computationReference(astIndex),
+            right: node,
+            astIndex: astIndex,
+            _prefixResult: true
+        });
+    },
+
+    storeComputationResult: function(node, start, end, astIndex, postfix) {
+        postfix = !!postfix;
         if (this.scopes.length == 0) return node;
         var pos = (node.start || start || 0) + '-' + (node.end || end || 0);
         this.scopes.last().computationProgress.push(pos);
-        return this.newNode('AssignmentExpression', {
-            operator: '=',
-            left: this.newNode('MemberExpression', {
-                object: this.newNode('Identifier', {name: '_'}),
-                property: this.lastNodeExpression(astIndex),
-                computed: true
-            }),
-            right: node
+
+        if (postfix) {
+            // _[astIndex] = XX, lastNode = astIndex, _[astIndex]
+            return this.newNode('SequenceExpression', {
+                expressions: [
+                    this.simpleStoreComputationResult(node, astIndex),
+                    this.lastNodeExpression(astIndex),
+                    this.computationReference(astIndex)
+                ],
+                _prefixResult: !postfix
+            });
+        } else {
+            // _[lastNode = astIndex] = XX
+            return this.newNode('AssignmentExpression', {
+                operator: '=',
+                left: this.computationReference(this.lastNodeExpression(astIndex)),
+                right: node,
+                _prefixResult: !postfix
+            });
+        }
+    },
+
+    isStoredComputationResult: function(node) {
+        return this.isPrefixStored(node) || this.isPostfixStored(node);
+    },
+
+    isPrefixStored: function(node) {
+        return node._prefixResult === true;
+    },
+
+    isPostfixStored: function(node) {
+        return node._prefixResult === false;
+    },
+
+    inlineAdvancePC: function(node, astIndex) {
+        return this.newNode('SequenceExpression', {
+            expressions: [
+                this.lastNodeExpression(astIndex),
+                node
+            ]
         });
     },
 
@@ -513,6 +556,15 @@ Object.subclass("lively.ast.Rewriting.Rewriter",
             left: this.newNode('Identifier', {name: 'lastNode'}),
             right: this.newNode('Literal', {value: astIndex}),
             astIndex: astIndex
+        });
+    },
+
+    computationReference: function(astIndexOrNode) {
+        return this.newNode('MemberExpression', {
+            object: this.newNode('Identifier', { name: '_' }),
+            property: isNaN(astIndexOrNode) ?
+                astIndexOrNode : this.newNode('Literal', { value: astIndexOrNode }),
+            computed: true
         });
     },
 
@@ -546,7 +598,7 @@ Object.subclass("lively.ast.Rewriting.Rewriter",
         var rewriteVisitor = new lively.ast.Rewriting.RewriteVisitor(astRegistryIndex),
             rewritten = rewriteVisitor.accept(astToRewrite, this);
         // FIXME!
-        rewritten = rewritten.expression.arguments[2];
+        rewritten = rewritten.expression.right.arguments[2];
         // this.astRegistry[astRegistryIndex].rewritten = rewritten; // FIXME just for debugging
         return rewritten;
     },
@@ -1174,8 +1226,9 @@ lively.ast.Rewriting.BaseVisitor.subclass("lively.ast.Rewriting.RewriteVisitor",
                 body: [rewriter.wrapSequence(rewritten, args, decls, astRegistryIndex)]}),
             id: n.id || null, params: args, astIndex: n.astIndex
         }, astRegistryIndex);
+        wrapped.astIndex = n.astIndex;
         wrapped = rewriter.newNode('ExpressionStatement', {
-            expression: rewriter.storeComputationResult(wrapped, start, end, astIndex),
+            expression: rewriter.simpleStoreComputationResult(wrapped, astIndex),
             id: n.id
         });
         // rewriter.astRegistry[astRegistryIndex].rewritten = wrapped; // FIXME just for debugging
@@ -1203,7 +1256,7 @@ lively.ast.Rewriting.BaseVisitor.subclass("lively.ast.Rewriting.RewriteVisitor",
                     value,
                 astIndex: decl.astIndex
             });
-            return rewriter.storeComputationResult(value, start, end, decl.astIndex);
+            return rewriter.storeComputationResult(value, start, end, decl.astIndex, true);
         }, this);
 
         return rewriter.newNode('ExpressionStatement', {
@@ -1337,14 +1390,27 @@ lively.ast.Rewriting.BaseVisitor.subclass("lively.ast.Rewriting.RewriteVisitor",
     visitCallExpression: function(n, rewriter) {
         // callee is a node of type Expression
         // each of n.arguments is of type Expression
-        var start = n.start, end = n.end, astIndex = n.astIndex;
-        var thisIsBound = n.callee.type == 'MemberExpression'; // like foo.bar();
-        var callee = this.accept(n.callee, rewriter);
+        var start = n.start, end = n.end, astIndex = n.astIndex,
+            thisIsBound = n.callee.type == 'MemberExpression', // like foo.bar();
+            callee = this.accept(n.callee, rewriter);
         if (callee.type == 'ExpressionStatement') callee = callee.expression; // unwrap
+
         var args = n.arguments.map(function(n) {
-            var n = this.accept(n, rewriter);
-            return n.type == 'ExpressionStatement' ? n.expression : /*unwrap*/ n;
-        }, this);
+                var n = this.accept(n, rewriter);
+                return n.type == 'ExpressionStatement' ? n.expression : /*unwrap*/ n;
+            }, this),
+            lastArg = args.last();
+
+        if (lastArg !== undefined) {
+            if (rewriter.isPrefixStored(lastArg))
+                lastArg = lastArg.right; // unwrap
+            if (!rewriter.isPostfixStored(lastArg)) {
+                lastArg = args[args.length - 1] = rewriter.storeComputationResult(lastArg, lastArg.start, lastArg.end, n.arguments.last().astIndex, true);
+                // patch astIndex to calls astIndex
+                lastArg.expressions[1] = rewriter.lastNodeExpression(astIndex);
+            }
+        }
+
         if (!thisIsBound && rewriter.isWrappedVar(callee)) {
             // something like "foo();" when foo is in rewrite scope.
             // we can't just rewrite it as _123['foo']()
@@ -1358,10 +1424,15 @@ lively.ast.Rewriting.BaseVisitor.subclass("lively.ast.Rewriting.RewriteVisitor",
             }
             args.unshift({type: 'Identifier', name: 'Global'});
         }
-        return rewriter.storeComputationResult({
+
+        var callNode = {
             type: 'CallExpression', callee: callee,
             arguments: args, astIndex: astIndex
-        }, start, end, astIndex);
+        };
+        if (lastArg === undefined)
+            return rewriter.storeComputationResult(callNode, start, end, astIndex);
+        else
+            return rewriter.simpleStoreComputationResult(callNode, astIndex);
     },
 
     visitMemberExpression: function(n, rewriter) {
@@ -1511,6 +1582,11 @@ lively.ast.Rewriting.BaseVisitor.subclass("lively.ast.Rewriting.RewriteVisitor",
             start: n.start, end: n.end, type: 'CatchClause',
             param: param, guard: guard, body: body, astIndex: n.astIndex
         };
+    },
+
+    visitThrowStatement: function(n, rewriter) {
+        n.argument = rewriter.inlineAdvancePC(this.accept(n.argument, rewriter), n.astIndex);
+        return n;
     },
 
     visitIdentifier: function(n, rewriter) {
@@ -1675,10 +1751,10 @@ lively.ast.Rewriting.BaseVisitor.subclass("lively.ast.Rewriting.RewriteVisitor",
       + "}\n";
 
     lively.ast.Rewriting.UnwindExceptionBaseDef =
-        "window.UnwindException = function UnwindException(error) { this.error = error; error.unwindException = this; }\n"
+        "window.UnwindException = function UnwindException(error) { this.error = error; error.unwindException = this; this.frameInfo = []; }\n"
       + "UnwindException.prototype.isUnwindException = true;\n"
       + "UnwindException.prototype.toString = function() { return '[UNWIND] ' + this.error.toString(); }\n"
-      + "UnwindException.prototype.createAndShiftFrame = function(/*...*/) { }\n";
+      + "UnwindException.prototype.storeFrameInfo = function(/*...*/) { this.frameInfo.push(arguments); }\n";
 
     // base definition for UnwindException
     if (typeof UnwindException === 'undefined') {
@@ -1686,68 +1762,71 @@ lively.ast.Rewriting.BaseVisitor.subclass("lively.ast.Rewriting.RewriteVisitor",
     }
 
     // when debugging is enabled UnwindException can do more...
-    UnwindException.prototype.createAndShiftFrame = function(thiz, args, frameState, lastNodeAstIndex, pointerToOriginalAst) {
-        var scope, topScope, newScope,
-            fState = frameState; // [1] = varMapping, [2] = parentFrameState
-        do {
-            newScope = new lively.ast.AcornInterpreter.Scope(fState == Global ? Global : fState[1]);
-            if (scope)
-                scope.setParentScope(newScope);
-            else
-                topScope = newScope;
-            scope = newScope
-            fState = fState == Global ? null : fState[2];
-        } while (fState);
+    UnwindException.addMethods({
+        recreateFrames: function() {
+            this.frameInfo.forEach(function(frameInfo) {
+                this.createAndShiftFrame.apply(this, Array.from(frameInfo));
+            }, this);
+            this.frameInfo = [];
+            return this;
+        },
 
-        var alreadyComputed = frameState[0],
-            func = new lively.ast.AcornInterpreter.Function(__getClosure(pointerToOriginalAst), topScope),
-            frame = lively.ast.AcornInterpreter.Frame.create(func /*, varMapping */),
-            pc;
-        frame.setThis(thiz);
-        if (frame.func.node && frame.func.node.type != 'Program')
-            frame.setArguments(args);
-        frame.setAlreadyComputed(alreadyComputed);
-        if (!this.top) {
-            pc = this.error && acorn.walk.findNodeByAstIndex(frame.getOriginalAst(),
-                this.error.astIndex ? this.error.astIndex : lastNodeAstIndex);
-        } else {
-            if (frame.isAlreadyComputed(lastNodeAstIndex)) lastNodeAstIndex++;
-            pc = acorn.walk.findNodeByAstIndex(frame.getOriginalAst(), lastNodeAstIndex);
+        createAndShiftFrame: function(thiz, args, frameState, lastNodeAstIndex, pointerToOriginalAst) {
+            var topScope = lively.ast.AcornInterpreter.Scope.recreateFromFrameState(frameState),
+                alreadyComputed = frameState[0],
+                func = new lively.ast.AcornInterpreter.Function(__getClosure(pointerToOriginalAst), topScope),
+                frame = lively.ast.AcornInterpreter.Frame.create(func /*, varMapping */),
+                pc;
+            frame.setThis(thiz);
+            if (frame.func.node && frame.func.node.type != 'Program')
+                frame.setArguments(args);
+            frame.setAlreadyComputed(alreadyComputed);
+            if (!this.top) {
+                pc = this.error && acorn.walk.findNodeByAstIndex(frame.getOriginalAst(),
+                    this.error.astIndex ? this.error.astIndex : lastNodeAstIndex);
+            } else {
+                if (frame.isAlreadyComputed(lastNodeAstIndex)) lastNodeAstIndex++;
+                pc = acorn.walk.findNodeByAstIndex(frame.getOriginalAst(), lastNodeAstIndex);
+            }
+            frame.setPC(pc);
+            frame.setScope(topScope);
+
+            return this.shiftFrame(frame, true);
+        },
+
+        shiftFrame: function(frame, isRecreating) {
+            if (!isRecreating)
+                this.recreateFrames();
+            if (!frame.isResuming()) console.log('Frame without PC found!', frame);
+            if (!this.top) {
+                this.top = this.last = frame;
+            } else {
+                this.last.setParentFrame(frame);
+                this.last = frame;
+            }
+            return frame;
+        },
+
+        unshiftFrame: function() {
+            this.recreateFrames();
+            if (!this.top) return;
+
+            var frame = this.top,
+                prevFrame;
+            while (frame.getParentFrame()) {
+                prevFrame = frame;
+                frame = frame.getParentFrame();
+            }
+            if (prevFrame) { // more then one frame
+                prevFrame.setParentFrame(undefined);
+                this.last = prevFrame;
+            } else {
+                this.top = this.last = undefined;
+            }
+            return frame;
         }
-        frame.setPC(pc);
-        frame.setScope(topScope);
 
-        return this.shiftFrame(frame);
-    }
-
-    UnwindException.prototype.shiftFrame = function(frame) {
-        if (!frame.isResuming()) console.log('Frame without PC found!', frame);
-        if (!this.top) {
-            this.top = this.last = frame;
-        } else {
-            this.last.setParentFrame(frame);
-            this.last = frame;
-        }
-        return frame;
-    }
-
-    UnwindException.prototype.unshiftFrame = function() {
-        if (!this.top) return;
-
-        var frame = this.top,
-            prevFrame;
-        while (frame.getParentFrame()) {
-            prevFrame = frame;
-            frame = frame.getParentFrame();
-        }
-        if (prevFrame) { // more then one frame
-            prevFrame.setParentFrame(undefined);
-            this.last = prevFrame;
-        } else {
-            this.top = this.last = undefined;
-        }
-        return frame;
-    }
+    });
 
 })();
 

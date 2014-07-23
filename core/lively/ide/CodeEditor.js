@@ -1,4 +1,4 @@
-module('lively.ide.CodeEditor').requires('lively.morphic', 'lively.ide.codeeditor.ace', 'lively.ide.codeeditor.DocumentChange', 'lively.ide.codeeditor.JS', 'lively.ide.codeeditor.Keyboard', 'lively.ide.codeeditor.EvalMarker', 'lively.ide.codeeditor.Snippets', 'lively.ide.codeeditor.Modes').toRun(function() {
+module('lively.ide.CodeEditor').requires('lively.morphic', 'lively.ide.codeeditor.ace', 'lively.ide.codeeditor.DocumentChange', 'lively.ide.codeeditor.JS', 'lively.ide.codeeditor.Keyboard', 'lively.ide.codeeditor.EvalMarker', 'lively.ide.codeeditor.Snippets', 'lively.ide.codeeditor.Modes', 'lively.lang.VM').toRun(function() {
 
 lively.morphic.Shapes.External.subclass("lively.morphic.CodeEditorShape",
 'settings', {
@@ -75,7 +75,7 @@ lively.morphic.Morph.subclass('lively.morphic.CodeEditor',
     },
     doNotSerialize: ['_aceInitialized', 'aceEditor', 'aceEditorAfterSetupCallbacks', 'savedTextString'],
     _aceInitialized: false,
-    evalEnabled: true,
+    evalEnabled: false,
     isAceEditor: true,
     isCodeEditor: true,
     isText: true,
@@ -750,10 +750,14 @@ lively.morphic.Morph.subclass('lively.morphic.CodeEditor',
 
         if (lively.Config.get('improvedJavaScriptEval') && __evalStatement.length < 150000) {
             try {
-                var transformed = lively.ast.transform.replaceTopLevelVarDeclAndUsageForCapturing(
-                    __evalStatement, {name: "Global", type: "Identifier"});
-                __evalStatement = transformed.source;
-                $morph('log') && ($morph('log').textString = transformed.source);
+                var result;
+                lively.lang.VM.runEval(__evalStatement, {
+                    context: ctx,
+                    topLevelVarRecorder: Global,
+                    varRecorderName: 'Global',
+                    blacklist: ['Global']
+                }, function(err, _result) { result = err || _result; });
+                return result;
             } catch(e) {
                 if (Config.showImprovedJavaScriptEvalErrors) $world.logError(e)
                 else console.error("Eval preprocess error: %s", e.stack || e);
@@ -889,6 +893,37 @@ lively.morphic.Morph.subclass('lively.morphic.CodeEditor',
         function reset() { self.setSelectionRangeAce(currentRange); }
         return doFunc.call(this, reset);
     },
+
+    mergeUndosOf: function(doFunc) {
+        var ed, undoStackOld, wasMerged = false;
+
+        this.withAceDo(function(aceEd) {
+            ed = aceEd;
+            ed.session.markUndoGroup();
+            undoStackOld = ed.session.getUndoManager().$undoStack.clone();
+            try { doFunc.call(this, mergeUndos); } catch (e) {
+                if (!wasMerged) mergeUndos();
+                throw e;
+            }
+        });
+
+        // -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+        function mergeUndos() {
+            wasMerged = true;
+            var undoStackNew = ed.session.getUndoManager().$undoStack.clone();
+            var deltas = undoStackNew.withoutAll(undoStackOld);
+            var undoStackMerged = deltas.length ? deltas.reduce(function(delta, ea) {
+                delta[0].deltas = delta[0].deltas.concat(ea[0].deltas);
+                return delta;
+            }) : [];
+            ed.session.getUndoManager().$undoStack = undoStackOld.concat([undoStackMerged]);
+        }
+    },
+
+    undo: function() { return this.withAceDo(function(ed) { return ed.undo(); }); },
+
+    redo: function() { return this.withAceDo(function(ed) { return ed.redo(); }); },
 
     getSelection: function() {
         return this.withAceDo(function(ed) { return ed.selection });
@@ -1149,8 +1184,18 @@ lively.morphic.Morph.subclass('lively.morphic.CodeEditor',
         });
     },
 
-    insertAtCursor: function(string, selectIt, overwriteSelection) {
-        this.withAceDo(function(ed) { ed.onPaste(string) });
+    insertAtCursor: function(string, selectIt, overwriteSelection, growSelection) {
+        var rangeBefore = overwriteSelection || selectIt || growSelection ? this.getSelectionRangeAce() : null;
+        if (!overwriteSelection) this.collapseSelection('end');
+        if (overwriteSelection) this.replace(rangeBefore, "");
+        this.withAceDo(function(ed) {
+            ed.onPaste(string);
+            var rangeAfter = this.getSelectionRangeAce();
+            if (selectIt)
+                this.setSelectionRangeAce({start: rangeBefore.end, end: rangeAfter.end});
+            if (growSelection)
+                this.setSelectionRangeAce({start: rangeBefore.start, end: rangeAfter.end});
+        });
     },
 
     append: function(string) {
@@ -1554,7 +1599,7 @@ lively.morphic.Morph.subclass('lively.morphic.CodeEditor',
         var win = this.getWindow();
         if (!win) return null;
 
-        // text editor 
+        // text editor
         if (win.getLocation) return win.getLocation(true);
 
         // SCB

@@ -24,8 +24,31 @@ lively.morphic.Morph.addMethods(
         _Opacity: {defaultValue: 1, getter: function(morph) { return morph.getOpacity(); }},
         _Rotation: {defaultValue: 0},
         _Scale: {defaultValue: 1},
+        submorphs: {
+            filter: function(morph, submorphs) {
+              // since we now handle all the submorphs explicitly, we exclude all
+              // of them from the usual recreation and entangling process
+                return [];
+            },
+            getter: function(morph, val) {
+                // the getter has to retrieve all the the buildspecs from the
+                // submorphs
+                return val.map(function(m) { return m.buildSpec() });
+            },
+            recreate: function(instance, spec) {
+                // we recreate all the morphs from the respective buildspec,
+                // and we also make sure they are entangled properly
+                spec.submorphs.forEach(function(subSpec){
+                    instance.addMorph(subSpec.createMorph())
+                });
+            },
+            tracker: {
+                signals: ['addMorph', 'removeMorph'],
+                add: function(instance, elem) { instance.addMorph(elem); },
+                remove: function(instance, elem) { instance.removeMorph(elem); }
+            }
+        },
         // excludes:
-        submorphs: {exclude: true},
         showsHalos: {exclude: true},
         scripts: {exclude: true},
         id: {exclude: true},
@@ -59,7 +82,7 @@ lively.morphic.Morph.addMethods(
                 if (!val) return result;
                 if (Object.isString(val)) { return val; }
                     Properties.forEachOwn(val, function(name, prop) {
-                    if (name === "layouter" && prop.constructor) {
+                    if (name === "layouter" && prop && prop.constructor) {
                         result.type = prop.constructor.type;
                         result.borderSize = prop.borderSize;
                         result.spacing = prop.spacing;
@@ -138,7 +161,7 @@ lively.morphic.List.addMethods(
     },
     onFromBuildSpecCreated: function($super) {
         $super();
-        this.setList(this.itemList || []);
+        return this.setList(this.itemList || []);
     }
 });
 
@@ -185,7 +208,9 @@ lively.morphic.Text.addMethods(
         _MaxTextWidth: {defaultValue: null},
         _MaxTextHeight: {defaultValue: null},
         textColor: {defaultValue: Color.rgb(0,0,0)},
-        _Padding: {defaultValue: lively.Rectangle.inset(0)},
+        _Padding: { defaultValue: lively.Rectangle.inset(0),
+                    getter: function(morph) { return morph.shape.getPadding(); },
+                    recreate: function(instance, spec) { instance.setPadding(spec._Padding); }},
         _WhiteSpaceHandling: {defaultValue: "pre-wrap"},
         _MinTextWidth: {defaultValue: null},
         _MinTextHeight: {defaultValue: null},
@@ -292,7 +317,16 @@ lively.morphic.MorphList.addMethods(
         this.setList(this.itemList || []);
     },
     buildSpecProperties: {
-        itemList: {}
+        itemList: {recreate: function(instance, spec) { 
+            spec.storedItems && spec.storedItems.forEach(function(item) { instance.addItem(item); }) 
+            }
+        },
+        itemMorphs: {exclude: true}
+    },
+    buildSpec: function() {
+        var spec = $super();
+        spec.storedItems = this.itemList.map(function(item) { return item.morph.buildSpec() });
+        return spec;
     }
 });
 
@@ -304,7 +338,8 @@ lively.morphic.Tree.addMethods(
         isInLayoutCycle: false,
         item: {exclude: true},
         label: {exclude: true},
-        node: {exclude: true}
+        node: {exclude: true},
+        layout: {exclude: true}
     },
 
     onBuildSpecCreated: function(buildSpec) {
