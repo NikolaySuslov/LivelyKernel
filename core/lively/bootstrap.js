@@ -571,20 +571,9 @@
                 var loadDebugCode = JSLoader.getOption('loadRewrittenCode')
                                  && !suppressDebug
                                  && !this.isCrossDomain(url);
-                if (loadDebugCode) {
-                    var idx = url.lastIndexOf('/') + 1,
-                        dbgURL = url.slice(0,idx) + 'DBG_' + url.slice(idx),
-                        wasLoaded = false;
-                    JSLoader.getViaXHR(loadSync, dbgURL, function(err, content) {
-                        if (err) {
-                            JSLoader.loadedURLs = JSLoader.loadedURLs.filter(function(ea) { return ea !== url; });
-                            JSLoader.loadJs(url, onLoadCb, loadSync, okToUseCache, cacheQuery, true)
-                            // JSLoader.getViaXHR(loadSync, url, function(err, content) {})
-                        } else {
-                            JSLoader.evalJavaScriptFromURL(dbgURL, content, onLoadCb);
-                        }
-                    });
-                    return;
+                if (loadDebugCode && !url.match(/\/BootstrapDebugger\.js$/)) {
+                    var idx = url.lastIndexOf('/') + 1;
+                    url = url.slice(0,idx) + 'DBG_' + url.slice(idx);
                 }
 
                 if (okToUseCache === undefined) okToUseCache = true;
@@ -595,7 +584,7 @@
                     exactUrl = this.makeUncached(exactUrl, cacheQuery);
                 }
 
-                return loadSync ?
+                return loadSync || JSLoader.getOption('onLoadRewrite') ?
                     this.loadViaXHR(loadSync, exactUrl, onLoadCb) :
                     this.loadViaScript(exactUrl, onLoadCb);
             },
@@ -920,7 +909,7 @@
                 'core/lively/Base.js',
                 'core/lively/ModuleSystem.js']
             return JSLoader.getOption('loadRewrittenCode') ?
-                ["core/lib/escodegen.browser.js", "core/lively/ast/BootstrapDebugger.js"].concat(normalBootstrapFiles,"core/lively/store/Interface.js","core/lively/ast/Debugging.js") :
+                ["core/lib/escodegen.browser.js", "core/lively/ast/BootstrapDebugger.js"].concat(normalBootstrapFiles) :
                 normalBootstrapFiles;
         })(),
         codeBase = (function findCodeBase() {
@@ -1017,6 +1006,8 @@
                 'lively.lang.Closure',
                 'lively.bindings',
                 'lively.Main'];
+            if (JSLoader.getOption('loadRewrittenCode'))
+                requiredModulesForWorldStart.unshift('lively.ast.Debugging');
 
             lively.require(requiredModulesForWorldStart).toRun(function() {
                 lively.Config.loadUserConfigModule();

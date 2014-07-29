@@ -131,9 +131,7 @@ Object.subclass('lively.ast.AcornInterpreter.Interpreter',
                 if (type != 'FunctionDeclaration') return;
                 self.visitFunctionDeclaration(node, { currentFrame: frame });
             }
-        }, null, { visitors: acorn.walk.make({
-            'Function': function() { /* stop descent */ }
-        })});
+        }, null, { visitors: acorn.walk.visitors.stopAtFunctions });
     },
 
     invoke: function(recv, func, argValues, frame, isNew) {
@@ -1069,11 +1067,14 @@ Object.subclass('lively.ast.AcornInterpreter.Function',
         if (source) return source;
 
         var ast = this.getAst();
-        if (ast.sourceFile) {
-            source = new WebResource(URL.root.withFilename(ast.sourceFile)).get().content;
-            if (source)
-                return source.substring(ast.start, ast.end);
+        if (ast._parentEntry != null) {
+            source = __getClosure(ast._parentEntry).source;
         }
+        if (!source && ast.sourceFile) {
+            source = new WebResource(URL.root.withFilename(ast.sourceFile)).get().content;
+        }
+        if (source)
+            return source.substring(ast.start, ast.end);
 
         return escodegen.generate(this.getAst());
     }

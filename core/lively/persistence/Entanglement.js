@@ -129,8 +129,19 @@ Object.subclass("lively.persistence.Entanglement.Morph",
                 if(self.updateDict[entangledMorph][key])
                     self.updateDict[entangledMorph][key].setter(entangledMorph, self.entangledAttributes)
             });
-            self.baseSpec.set(key, value);
         },
+    saveStateToSpec: function() {
+        // create and/or set values for properties inside the builSpec based on entanglement
+        for ( var attr in this.entangledAttributes ) {
+            if(this.get(attr) != this.baseSpec.attributeStore[attr])
+                this.baseSpec.set(attr, this.get(attr));
+        }
+        // delete attributes no longer present in entanglement
+        for (var attr in this.baseSpec.attributeStore) {
+            if(!this.entangledAttributes.hasOwnProperty(attr))
+                delete this.baseSpec.attributeStore[attr]
+        }
+    },
     visualize: function() {
         var inspector = lively.BuildSpec('lively.ide.tools.EntanglementInspector').createMorph().openInWorldCenter();
         inspector.visualize(this);
@@ -144,7 +155,6 @@ Object.subclass("lively.persistence.Entanglement.Morph",
 
     deleteMethod: function(methodName) {
         delete this.entangledAttributes[methodName];
-        delete this.baseSpec.attributeStore[methodName];
         this.entangledMorphs.forEach(function(morph) {
             delete morph[methodName];
         });
@@ -399,7 +409,10 @@ Object.subclass("lively.persistence.Entanglement.Morph",
         //FIXME: Do not alter the morph, that has triggered the whole removal
         // removeAll entangled morphs without
         var self = this;
-        self.entangledMorphs.forEach(function(entangled) { entangled.remove() })
+        self.entangledMorphs.forEach(function(entangled) { 
+                var hand = entangled.hand();
+                if(hand && !hand.submorphs.include(entangled))
+                    entangled.remove(); })
         
         // disconnect from morphs
         self.entangledMorphs.forEach(function(entangled) { self.disconnectMorph(entangled); });
@@ -518,6 +531,13 @@ Object.subclass("lively.persistence.Entanglement.Morph",
             self.subEntanglements.remove(entanglement);
             self.propagateArrayChange('remove', entanglement);
         });
+        
+        if(newSubMorphs.length > 0 || removedSubEntanglements.length > 0)
+            self.onSubEntanglementsChanged(newArray);
+    },
+    onSubEntanglementsChanged: function(newSubEntanglements) {
+        // custom code that should be executed when our subEntanglement is changed
+        return newSubEntanglements
     },
     getAllSubObjectsFor: function(instance) {
         // currently onlt all submorphs, but might be a combination

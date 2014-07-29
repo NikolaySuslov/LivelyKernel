@@ -148,6 +148,61 @@ Object.extend(lively.ast, {
     });
 })();
 
+// patch JSLoader to rewrite code on load
+Object.extend(JSLoader, {
+
+    evalJavaScriptFromURL: function(url, source, onLoadCb) {
+        if (!source) { console.warn('Could not load %s', url); return; }
+
+        function declarationForGlobals(rewrittenAst) {
+            // _0 has all global variables
+            var propAccess = lively.PropertyPath('body.0.block.body.0.declarations.4.init.properties'),
+                globalProps = propAccess.get(rewrittenAst);
+            if (!globalProps) {
+                console.warn('Cannot access global declarations of %s ', url);
+                return '\n';
+            }
+            var globalVars = globalProps.pluck('key').pluck('value');
+            return globalVars.map(function(varName) {
+                return Strings.format('Global["%s"] = _0["%s"];', varName, varName);
+            }).join('\n');;
+        }
+
+        // rewrite code
+        var url = url.indexOf(LivelyLoader.rootPath) == 0 ? url.substr(LivelyLoader.rootPath.length) : url,
+            ast = lively.ast.acorn.parse(source, { locations: true, directSourceFile: url }),
+            rewrittenAst = lively.ast.Rewriting.rewrite(ast, LivelyDebuggingASTRegistry),
+            rewrittenSource = Strings.format(
+                '(function() {\n%s\n%s\n})();',
+                escodegen.generate(rewrittenAst),
+                declarationForGlobals(rewrittenAst)
+            );
+        ast.source = source;
+
+        try {
+            // adding sourceURL improves conventional debugging as it will be used
+            // in stack traces by some debuggers
+            eval.call(Global, rewrittenSource + "\n//# sourceURL=" + url);
+        } catch (e) {
+            console.error('Error when evaluating %s: %s\n%s', url, e, e.stack);
+        }
+        if (typeof onLoadCb === 'function') onLoadCb();
+    }
+
+});
+
+var _getOption = JSLoader.getOption;
+JSLoader.getOption = function(option) {
+    switch (option) {
+    case 'loadRewrittenCode':
+        return false;
+    case 'onLoadRewrite':
+        return true;
+    default:
+        return _getOption.call(_getOption, option);
+    }
+}
+
 if (lively.Config.get('loadRewrittenCode'))
     lively.Config.set('improvedJavaScriptEval', false); // me no like improved eval yet
 

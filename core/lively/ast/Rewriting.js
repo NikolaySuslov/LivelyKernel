@@ -58,7 +58,6 @@ Object.extend(lively.ast.Rewriting, {
         // helper
         function createDebuggingBootstrap() {
             var code = [
-                    lively.ast.Rewriting.findNodeByAstIndexBaseDef,
                     lively.ast.Rewriting.createClosureBaseDef,
                     lively.ast.Rewriting.UnwindExceptionBaseDef
                 ],
@@ -157,16 +156,15 @@ Object.extend(lively.ast.Rewriting, {
                 'core/lively/lang/Number.js', 'core/lively/lang/Date.js', 'core/lively/lang/Worker.js',
                 'core/lively/lang/LocalStorage.js','core/lively/defaultconfig.js', 'core/lively/Base.js',
                 'core/lively/ModuleSystem.js', 'core/lively/Traits.js', 'core/lively/DOMAbstraction.js',
-                'core/lively/IPad.js', 'core/lively/LogHelper.js', 'core/lively/lang/Closure.js',
+                'core/lively/IPad.js', 'core/lively/LogHelper.js', 'core/lively/localconfig.js',
                 // bootstrap.js
-                'core/lively/bindings/Core.js', 'core/lively/persistence/Serializer.js',
-                'core/lively/Main.js', 'core/lively/net/WebSockets.js', 'core/cop/Layers.js',
-                'core/lively/OldModel.js', 'core/lively/Data.js', 'core/lively/Network.js',
-                'core/lively/ast/Debugging.js', 'core/lively/ast/AcornInterpreter.js',
-                /* 'core/lively/ast/Rewriting.js',*/ 'core/lively/ast/AstHelper.js',
-                'core/lively/ast/acorn.js',
-                // neccessary to be able to load everything else dynamically
-                'core/lively/store/Interface.js'
+                'core/lively/lang/Closure.js',
+                'core/lively/bindings.js', 'core/lively/bindings/Core.js',
+                'core/lively/Main.js', 'core/lively/persistence/Serializer.js'
+                // directly necessary for debugging BUT excluded for now:
+                // 'core/lively/ast/Debugging.js', 'core/lively/ast/AcornInterpreter.js',
+                // 'core/lively/ast/Rewriting.js', 'core/lively/ast/AstHelper.js',
+                // 'core/lively/ast/acorn.js', 'core/lively/ast/StackReification.js'
             ];
 
             bootstrapRewriteFiles.forEachShowingProgress({
@@ -321,9 +319,7 @@ Object.subclass("lively.ast.Rewriting.Rewriter",
                 if (scope.localVars.indexOf(node.id.name) == -1)
                     scope.localVars.push(node.id.name);
             }
-        }, decls, {
-            visitors: acorn.walk.make({'Function': function() { /* stop descent */ }})
-        });
+        }, decls, { visitors: acorn.walk.visitors.stopAtFunctions });
 
         return Object.getOwnPropertyNames(decls).map(function(decl) {
             var node = decls[decl];
@@ -605,13 +601,14 @@ Object.subclass("lively.ast.Rewriting.Rewriter",
 
     rewriteFunctionDeclaration: function(node, originalRegistryIndex) {
         var astToRewrite = acorn.walk.copy(node);
+        this.astRegistry.push(node);
+        node._parentEntry = originalRegistryIndex;
         if (node.id.name.substr(0, 12) == '_NO_REWRITE_') {
             astToRewrite.type = 'FunctionExpression';
             return astToRewrite;
         }
 
         this.enterScope();
-        this.astRegistry.push({ registryRef: originalRegistryIndex, indexRef: node.astIndex });
         var astRegistryIndex = this.astRegistry.length - 1,
             args = this.registerVars(node.params), // arguments
             rewriteVisitor = new lively.ast.Rewriting.RewriteVisitor(originalRegistryIndex),
@@ -1205,6 +1202,9 @@ lively.ast.Rewriting.BaseVisitor.subclass("lively.ast.Rewriting.RewriteVisitor",
         // n.generator has a specific type that is boolean
         // n.expression has a specific type that is boolean
         var astToRewrite = acorn.walk.copy(n);
+        rewriter.astRegistry.push(n);
+        n._parentEntry = this.registryIndex;
+
         var start = n.start, end = n.end, astIndex = n.astIndex;
         if (n.id && n.id.name.substr(0, 12) == '_NO_REWRITE_') {
             return rewriter.newNode('ExpressionStatement', {
@@ -1214,11 +1214,10 @@ lively.ast.Rewriting.BaseVisitor.subclass("lively.ast.Rewriting.RewriteVisitor",
         }
 
         rewriter.enterScope();
-        rewriter.astRegistry.push({ registryRef: this.registryIndex, indexRef: n.astIndex });
         var astRegistryIndex = rewriter.astRegistry.length - 1,
             args = rewriter.registerVars(n.params), // arguments
             decls = rewriter.registerDeclarations(n.body, this), // locals
-            rewritten = this.accept(n.body, rewriter);
+            rewritten = this.accept(astToRewrite.body, rewriter);
         rewriter.exitScope();
         var wrapped = rewriter.wrapClosure({
             start: n.start, end: n.end, type: 'FunctionExpression',
@@ -1649,62 +1648,12 @@ lively.ast.Rewriting.BaseVisitor.subclass("lively.ast.Rewriting.RewriteVisitor",
 
 (function setupUnwindException() {
 
-    lively.ast.Rewriting.findNodeByAstIndexBaseDef =
-        "window.findNodeByAstIndex = function findNodeByAstIndex(ast, astIndexToFind) {\n"
-      + "    if (ast.astIndex === astIndexToFind) return ast;\n"
-      + "    var i, j, node, nodes, found = null,\n"
-      + "        props = Object.getOwnPropertyNames(ast);\n"
-      + "    for (i = 0; i < props.length; i++) {\n"
-      + "        node = ast[props[i]];\n"
-      + "        if (node instanceof Array) {\n"
-      + "            nodes = node;\n"
-      + "            for (j = 0; j < nodes.length; j++) {\n"
-      + "                node = nodes[j];\n"
-      + "                if (node.key && node.value) {\n"
-      + "                    if (node.key.astIndex >= astIndexToFind)\n"
-      + "                        found = findNodeByAstIndex(node.key, astIndexToFind);\n"
-      + "                    else if (node.value.astIndex >= astIndexToFind)\n"
-      + "                        found = findNodeByAstIndex(node.value, astIndexToFind);\n"
-      + "                    if (found !== null) break;\n"
-      + "                    continue;\n"
-      + "                } else if (!node || (node.type == null) || (node.astIndex < astIndexToFind)) continue;\n"
-      + "                found = findNodeByAstIndex(node, astIndexToFind);\n"
-      + "                if (found !== null) break;\n"
-      + "            }\n"
-      + "            if (found !== null) break;\n"
-      + "            continue;\n"
-      + "        } else if (!node || (node.type == null) || (node.astIndex < astIndexToFind)) continue;\n"
-      + "        found = findNodeByAstIndex(node, astIndexToFind);\n"
-      + "        if (found !== null) break;\n"
-      + "    }\n"
-      + "    return found;\n"
-      + "};\n";
-
     lively.ast.Rewriting.createClosureBaseDef =
         "window.__createClosure = function __createClosure(idx, parentFrameState, f) {\n"
       + "    var ast = LivelyDebuggingASTRegistry[idx];\n"
-      + "    if (ast && ast.hasOwnProperty('registryRef') && ast.hasOwnProperty('indexRef'))\n"
-      + "        // lazily solve reference to complete ast\n"
-      + "        Object.defineProperty(f, '_cachedAst', {\n"
-      + "            configurable: true, // important for delete\n"
-      + "            get: function() {\n"
-      + "                var cachedAst = findNodeByAstIndex(LivelyDebuggingASTRegistry[ast.registryRef], ast.indexRef);\n"
-      + "                delete this._cachedAst;\n"
-      + "                this._cachedAst = cachedAst;\n"
-      + "                return cachedAst;\n"
-      + "            }\n"
-      + "        });\n"
-      + "    else if (ast == null)\n"
-      + "        // lazily solve reference to complete ast\n"
-      + "        Object.defineProperty(f, '_cachedAst', {\n"
-      + "            configurable: true, // important for delete\n"
-      + "            get: function() {\n"
-      + "                var cachedAst = __getClosure(idx);\n"
-      + "                delete this._cachedAst;\n"
-      + "                this._cachedAst = cachedAst;\n"
-      + "                return cachedAst;\n"
-      + "            }\n"
-      + "        });\n"
+      + "    if (ast == null)\n"
+      + "        // THIS SHOULD NEVER HAPPEN! NEVER.\n"
+      + "        throw new Error('Could not find AST index ' + idx + ' in registry.');\n"
       + "    else\n"
       + "        f._cachedAst = ast;\n"
       + "    // parentFrameState = [computedValues, varMapping, parentParentFrameState]\n"
@@ -1720,34 +1669,7 @@ lively.ast.Rewriting.BaseVisitor.subclass("lively.ast.Rewriting.RewriteVisitor",
       + "    return f;\n"
       + "}\n\n"
       + "window.__getClosure = function __getClosure(idx) {\n"
-      + "    // FIXME: should be done in AST registry object instead\n"
-      + "    function fetchMissingASTRegistry(idx) {\n"
-      + "        var store = new lively.store.ObjectRepository(),\n"
-      + "            result = store.getASTRegistryIndex(idx);\n"
-      + "        console.log('Extending LivelyDebuggingASTRegistry for ' + idx + ' with (' + result.registry_id + ' to ' + (result.registry_id + result.additions_count) + ')');"
-      + "        if (result.ast && result.registry_additions) {\n"
-      + "            try {\n"
-      + "                LivelyDebuggingASTRegistry[result.registry_id] = eval('(' + result.ast + ')');\n"
-      + "                var additions = JSON.parse(result.registry_additions);\n"
-      + "                additions.forEach(function(ref, idx) {\n"
-      + "                    LivelyDebuggingASTRegistry[result.registry_id+idx+1] = ref;\n"
-      + "                });\n"
-      + "            } catch (e) {\n"
-      + "                console.error(e && e.stack || e);// fail silent if anything happens\n"
-      + "            }\n"
-      + "        }\n"
-      + "        return LivelyDebuggingASTRegistry[idx];\n"
-      + "    }\n"
-      + "    var ast = LivelyDebuggingASTRegistry[idx];\n"
-      + "    if (ast == null && lively.store && lively.store.ObjectRepository)\n"
-      + "        ast = fetchMissingASTRegistry(idx);\n"
-      + "    if (ast.hasOwnProperty('registryRef') && ast.hasOwnProperty('indexRef')) {\n"
-      + "        // reference instead of complete ast\n"
-      + "        ast = findNodeByAstIndex(\n"
-      + "            LivelyDebuggingASTRegistry[ast.registryRef],\n"
-      + "            ast.indexRef);\n"
-      + "    }\n"
-      + "    return ast;\n"
+      + "    return LivelyDebuggingASTRegistry[idx];\n"
       + "}\n";
 
     lively.ast.Rewriting.UnwindExceptionBaseDef =
@@ -1763,6 +1685,7 @@ lively.ast.Rewriting.BaseVisitor.subclass("lively.ast.Rewriting.RewriteVisitor",
 
     // when debugging is enabled UnwindException can do more...
     UnwindException.addMethods({
+
         recreateFrames: function() {
             this.frameInfo.forEach(function(frameInfo) {
                 this.createAndShiftFrame.apply(this, Array.from(frameInfo));
