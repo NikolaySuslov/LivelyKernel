@@ -1487,6 +1487,12 @@ lively.morphic.World.addMethods(
         module('lively.morphic.tools.PartsBin').load(true);
         return lively.BuildSpec('lively.morphic.tools.PartsBin').createMorph().openInWorldCenter().comeForward();
     },
+    openEntanglementInspectorFor: function(object, evt) {
+        var e = object.buildSpec().createEntanglement();
+        e.postEntangle(object);
+        return e.visualize();
+    },
+
     openInspectorFor: function(object, evt) {
         module('lively.ide.tools.Inspector').load(true);
         var inspector = lively.BuildSpec('lively.ide.tools.Inspector').createMorph().openInWorldCenter();
@@ -1695,10 +1701,7 @@ lively.morphic.World.addMethods(
     },
 
     openWorkspace: function (evt) {
-        lively.require("lively.ide.tools.JavaScriptWorkspace").toRun(function() {
-            lively.BuildSpec("lively.ide.tools.JavaScriptWorkspace")
-                .createMorph().openInWorldCenter().getWindow().comeForward();
-        });
+        lively.ide.commands.exec('lively.ide.openWorkspace');
     },
 
     openTextWindow: function(evt) {
@@ -1755,7 +1758,7 @@ lively.morphic.World.addMethods(
         }
     },
     openSystemConsole: function() {
-        return this.openPartItem('SystemConsole', 'PartsBin/Tools');
+        lively.ide.commands.exec("lively.ide.openSystemConsole");
     },
 
     openBuildSpecEditor: function() {
@@ -2514,6 +2517,10 @@ lively.morphic.Morph.subclass('lively.morphic.Window', Trait('lively.morphic.Dra
         if (this.targetMorph) {
             var self = this;
             itemFilter = function (items) {
+
+                var publishItem = items.detect(function(item) { return item[0] === "Publish"; });
+                if (publishItem) publishItem[1] = function (evt) { self.copyToPartsBinWithUserRequest(); }
+
                 var toRemove = items.detect(function(ea) { return ea[0].match(/select all submorphs/i); });
                 items.removeAt(items.indexOf(toRemove));
 
@@ -4134,7 +4141,9 @@ lively.morphic.Box.subclass('lively.morphic.Tree',
 'properties', {
     isTree: true,
     outsideOf: function(bounds) {
-        return !bounds.intersects(this.globalBounds());
+        // we only consider something to be outside of the bounds, 
+        // if it is more than 100 px BELOW the wrappers borders
+        return !bounds.insetByPt(pt(0, -200)).intersects(this.globalBounds());
     },
 },
 'documentation', {
@@ -4299,12 +4308,11 @@ lively.morphic.Box.subclass('lively.morphic.Tree',
         }
     },
     updateView: function(scrollingBounds, updateFunction) {
-        alertOK('view updated!')
         Functions.debounce(1000, update, false).bind(this)();
         function update() {
             if(this.childNodes) { 
                 this.childNodes.filter(function(tree) { 
-                    return !tree.outsideOf(scrollingBounds) && tree.expandFully 
+                    return !tree.outsideOf(scrollingBounds) 
                                 }).map(function(tree) { 
                                    updateFunction(tree);
                                    tree.updateView(scrollingBounds, updateFunction);
@@ -4573,6 +4581,14 @@ lively.morphic.Box.subclass('lively.morphic.Tree',
     toggle: function() {
         this.childNodes ? this.collapse() : this.expand();
     },
+    visibleChildNodes: function() {
+        var bounds = this.getWrapperBounds()
+        return this.childNodes.select(function(tree) { 
+                    return !tree.outsideOf(bounds); });
+    },
+    getWrapperBounds: function() {
+        return this.getRootTree().wrapper.globalBounds();
+    },
 
     fitToOwner: function () {
         if(this.owner) {
@@ -4710,6 +4726,8 @@ lively.morphic.Box.subclass('lively.morphic.Tree',
             i = i.index;
             target.emphasizeRange = [i, i + term.length];
             hit = true;
+        } else {
+            target.emphasizeRange = undefined;
         }
 
         if(target.children && target.children.length > 0){
@@ -4724,23 +4742,21 @@ lively.morphic.Box.subclass('lively.morphic.Tree',
         target.inSearchResult = hit;
         return hit;
     }   ,
-    onKeyDown: function($super, evt) {
-        // enter comment here
-        alertOK(evt.getKeyString());
-        if(evt.getKeyString() === 'Command-F') {
-            if(!this.searchBar) this.createSearchBar();
-            else this.exitSearch();
-            return true;
-        } else {
-            return $super(evt);
-        }
-    },
+
     searchFor: function(term) {
         this.collapse()
         this.searchTerm = term;
         this.label.unEmphasizeAll();
         this.searchTargetForTerm(this.item, term);
         Functions.debounce(100, this.renderSearchView, false).bind(this)();
+        this.viewUpdater = connect(this.wrapper, 'onScroll', this, 'updateView', {updater: function($proceed) { 
+                    $proceed(self.getWrapperBounds(), function(tree) {
+                                if(!tree.childNodes) {
+                                    tree.renderSearchView();
+                                    self.updateChildrenShallow();
+                                }
+                            });
+                    }, varMapping: {self: this}})
     },
     renderSearchView: function() {
         if(this.item.inSearchResult && this.item.emphasizeRange){
@@ -4760,13 +4776,12 @@ lively.morphic.Box.subclass('lively.morphic.Tree',
                                     var child = this.createNodeBefore(item)
                                     this.childNodes.push(child);
                                 }}, this);
-            // connect(this, 'onScroll', this, 'updateView', {updater: function($proceed) { 
-            //                     $proceed(bounds, function(tree) {
-            //                                 if(!tree.childNodes)
-            //                                     tree.renderSearchView();
-            //                                 });
-            //                     }, varMapping: {bounds: this.wrapper.globalBounds()}})
-            this.childNodes.invoke('renderSearchView');
+            var currentlyVisible = this.visibleChildNodes()
+            var i = 0;
+            while(i < currentlyVisible.length) {
+                currentlyVisible[i].renderSearchView(); i++;
+                currentlyVisible = this.visibleChildNodes();
+            }
             this.updateChildrenShallow();
         }
     },
@@ -4824,6 +4839,7 @@ lively.morphic.Box.subclass('lively.morphic.Tree',
     exitSearch: function() {
         this.searchBar.remove();
         this.searchTerm = undefined;
+        this.viewUpdater && this.viewUpdater.disconnect(); // we might not have entered a query at all
         this.setItem(this.target);
         // TODO: preserve expansion from before the search
     },
