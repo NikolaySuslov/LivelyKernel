@@ -1116,7 +1116,7 @@ lively.morphic.Text.subclass("lively.morphic.MenuItem",
     },
 
     onMouseUp: function($super, evt) {
-        if (evt.world.clickedOnMorph !== this && (Date.now() - evt.world.clickedOnMorphTime < 500)) {
+        if (evt.hand.clickedOnMorph !== this && (Date.now() - evt.hand.clickedOnMorphTime < 500)) {
             return false; // only a click
         }
         $super(evt);
@@ -1205,11 +1205,7 @@ lively.morphic.Morph.addMethods(
         // -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
         // morphic hierarchy / windows
         items.push(['Open in...', [
-            ['Window', function(evt) { self.openInWindow(evt.mousePoint); }],
-            ['Flap...', ['top', 'right', 'bottom', 'left'].map(function(align) {
-                return [align, function(evt) {
-                    require('lively.morphic.MorphAddons').toRun(function() {
-                        self.openInFlap(align); }); }]; })]
+            ['Window', function(evt) { self.openInWindow(evt.mousePoint); }]
         ]]);
 
         // Drilling into scene to addMorph or get a halo
@@ -2364,7 +2360,7 @@ lively.morphic.Box.subclass("lively.morphic.TitleBar",
     onMouseDown: function (evt) {
         //Functions.False,
         // TODO: refactor to evt.hand.clickedOnMorph when everything else is ready for it
-        evt.world.clickedOnMorph = this.windowMorph;
+        evt.hand.clickedOnMorph = this.windowMorph;
     },
     onMouseUp: Functions.False
 });
@@ -3665,7 +3661,7 @@ Trait('SelectionMorphTrait',
         this.resetSelection()
         this.addMorphFront(this.selectionMorph);
 
-        var pos = this.localize(this.eventStartPos || evt.getPosition());
+        var pos = this.localize(evt.hand.eventStartPos || evt.getPosition());
         this.selectionMorph.withoutPropagationDo(function() {
             this.selectionMorph.setPosition(pos)
             this.selectionMorph.setExtent(pt(1, 1))

@@ -1,7 +1,8 @@
 module('lively.morphic.React').requires('lively.morphic.Rendering', 'lively.morphic.PathShapes', 'lively.Traits', 'lively.morphic.Lists').toRun(function() {
 $.getScript('core/lib/react.js');
 
-lively.morphic.ReactMorph.addMethods({
+lively.morphic.ReactMorph.addMethods(
+    'default', {
     defineReactComponents: function() {
         // extract a state object from the current values of this morph
         var shapeState = this.getState(this.getShape());
@@ -26,55 +27,54 @@ lively.morphic.ReactMorph.addMethods({
           The idea is that lively objects just operate on this description 
           structure, which we eventually dump into a React Rendering canvas, that
           knows how to interpret this description and render it. */
-        var state = {morph: this.extractPropsFrom(description.morph),
-                     shape: this.extractPropsFrom(description.shape),
-                     submorphs: description.submorphs};
                      
-        var component = React.createClass({
+        var Shape =  React.createClass({
             self: this,
-            initialState: state,
-            //event handling... should the component directly modify state,
-            // or delegate this back to the morph owner object?
-            
-            // state methods
-            getInitialState: function() {
-                return this.initialState;
+            getDefaultProps: function() {
+                return {style: {}}
             },
-            getInitialProps: function() {
-                return {style: this.state.morph.style,
-                        className: 'morphNode'
-                };
-            },
-            
-            //rendering
             renderSubmorphs: function() {
-                if(this.state.submorphs) {
+                if(this.props.state.submorphs.length) {
                     return [React.DOM.div({id: 'origin-node'}, 
-                                this.state.submorphs.map(this.self.componentFromDescription, this.self))];
+                                this.props.state.submorphs.map(function(morphData) {
+                                    return Morph({state: morphData}) 
+                                }))];
                 } else {
                     return [];
                 }
             },
+           render: function() {
+               this.self.extractPropsFrom(this.props.state.shape, this.props);
+               return React.DOM.div(this.props, this.renderSubmorphs());
+           } 
+        });
+                     
+        var Morph = React.createClass({
+            self: this,
+            getDefaultProps: function() {
+                return {style: {},
+                        className: 'morphNode'}
+            },
+            initProps: function() {
+                if(this.state)
+                    this.props.state = this.state;
+                if(!this.props.state)
+                    this.props.state = description;
+                this.self.extractPropsFrom(this.props.state.morph, this.props);
+            },
             render: function() {
-                debugger;
-                return React.DOM.div(this.state.shape, this.renderSubmorphs());
+                this.initProps();
+                return React.DOM.div(this.props, Shape({state: this.props.state}));
             }
         })
-        
-        return component();
+        return Morph();
     },
-    extractPropsFrom: function(state) {
-        var props = {style: {}};
+    extractPropsFrom: function(state, propsStore) {
+        var props = propsStore || {style: {}};
         for( var attr in state ) {
-            this['set' + attr + 'Props'](state[attr], props);
+            this['set' + attr + 'Props'](state, props);
         }
         return props;
-    },
-    setPositionProps: function(position, props) {
-        props = props || this.reaceComponent.props;
-        props.style.position = 'absolute';
-        props.style.left = position.x + 'px';
-        props.style.top = position.y + 'px';
     },
     exampleDescription: function() {
         /* an example of a description for a morph hierarchy
@@ -106,23 +106,19 @@ lively.morphic.ReactMorph.addMethods({
         return description;
     },
     renders: function(attrName) {
-        return ['_Extent', '_Fill', '_Position'].include(attrName);
+        return ['_Extent', '_Fill', '_Position', 
+                '_BorderWidth', '_BorderColor', '_ClipMode', 
+                '_Rotation'].include(attrName) || alert('Do not render: ' + attrName);
     },
     renderBuildSpec: function(spec) {
-        React.renderComponent(
-            this.componentFromDescription(
-                this.descriptionFromBuildSpec(spec)), this.renderContext().morphNode);
-    },
-
-    setFillProps: function(fill, props) {
-        props = props || this.reaceComponent.props;
-        props.style.background = fill.toRGBAString();
-    },
-
-    setExtentProps: function(extent, props) {
-        props = props || this.reaceComponent.props;
-        props.style.width = extent.x + 'px';
-        props.style.height = extent.y + 'px';
+        if(!this.reactComponent) {
+            this.reactComponent = React.renderComponent(
+                this.componentFromDescription(
+                    this.descriptionFromBuildSpec(spec)), this.renderContext().shapeNode);
+        } else {
+            this.reactComponent.setState(
+                    this.descriptionFromBuildSpec(spec));
+        }
     },
     addMorph: function(subMorphDescription) {
         // for now this method just accepts a description of a morph
@@ -134,6 +130,62 @@ lively.morphic.ReactMorph.addMethods({
     defaultShape: function(optBounds) {
         return new lively.morphic.Shapes.ReactShape(optBounds || new lively.Rectangle(0,0,0,0));
     },
+},
+'setting', {
+    setPositionProps: function(state, props) {
+        var position = state['Position'];
+        props.style.position = 'absolute';
+        props.style.left = position.x + 'px';
+        props.style.top = position.y + 'px';
+    },
+
+    setClipModeProps: function(state, props) {
+        var state = state['ClipMode'];
+        var style = props.style;
+        if (typeof state === "string") {
+            style.overflowX = state;
+            style.overflowY = state;
+        } else if (typeof state === "object") {
+            if (!state.x) style.removeProperty('overflow-x');
+            else style.overflowX = state.x;
+            if (!state.y) style.removeProperty('overflow-y');
+            else style.overflowY = state.y;
+        } else {
+            style.removeProperty('overflow-x');
+            style.removeProperty('overflow-y');
+        }
+    },
+
+    setBorderColorProps: function(state, props) {
+        this.setBorderProps(state, props);
+    },
+    setBorderWidthProps: function(state, props) {
+        this.setBorderProps(state, props);
+    },
+    setBorderProps: function(state, props) {
+        var opacity = state['Opacity'];
+        var fill = state['BorderColor'] || null;
+        var width = state['BorderWidth'];
+        if (this.getStrokeOpacity() != 1) {
+            opacity = this.getStrokeOpacity();
+        } else {
+            opacity = fill === null ? 0 : fill.a;
+        }
+        if ((fill instanceof Color) && opacity) fill = fill.withA(opacity);
+        if (!fill) fill = Color.rgba(0,0,0,1);
+        props.style['border'] = state['BorderStyle'] || 'solid' + ' ' + width + 'px ' +
+            fill.toCSSString(state['Bounds']);
+    },
+    setFillProps: function(state, props) {
+        props.style.background = state['Fill'].toRGBAString();
+    },
+    setExtentProps: function(state, props) {
+        var extent = state['Extent']
+        props.style.width = extent.x + 'px';
+        props.style.height = extent.y + 'px';
+    }
+}, 'getting', {
+
 })
 
 lively.morphic.Shapes.ReactShape.addMethods({

@@ -700,20 +700,6 @@ Object.subclass('lively.morphic.Morph',
         return lively.$(this.jQueryNode());
     }
 });
-lively.morphic.Morph.subclass('lively.morphic.ReactMorph',
-'initializing', {
-    initialize: function($super, initialBounds) {
-        if(!initialBounds)
-            initialBounds = pt(0).extent(pt(100,100));
-        $super();
-        this.setPosition(initialBounds.topLeft());
-        this.setFill(Color.blue);
-        //this.defineReactComponents();
-        // this is the initial render call, from which on all the
-        // hierarchical morph rendering is handled through React
-        //React.renderComponent(this.reactComponent, this.renderContext().morphNode);
-    }
-});
 lively.morphic.Morph.subclass('lively.morphic.World',
 'properties', {
     style: {
@@ -731,16 +717,24 @@ lively.morphic.Morph.subclass('lively.morphic.World',
     isWorld: true
 },
 'accessing -- morphic relationship', {
+    draggedMorphs: function() {
+        return this.hands.map(function (hand) { return hand.draggedMorph }).filter(function (ea) { return ea });
+    },
+
     addMorph: function($super, morph, optMorphBefore) {
         // my first hand is almost the topmost morph
         var r = $super(morph, optMorphBefore);
-        $super(this.firstHand());
+        this.hands.forEach(function(hand) {
+            $super(hand);
+        })
         return r;
     }
 },
 'accessing', {
     world: function() { return this },
-    firstHand: function() { return this.hands && this.hands[0] },
+    firstHand: function() {
+        return this.hands && (this.hands.find(function(hand) { return typeof hand.pointerId !== 'undefined' }) || this.hands[0])
+    },
     windowBounds: function(optWorldDOMNode) {
         if (this.cachedWindowBounds) return this.cachedWindowBounds;
         var canvas = optWorldDOMNode || this.renderContext().getMorphNode(),
@@ -749,7 +743,7 @@ lively.morphic.Morph.subclass('lively.morphic.World',
             scale = 1 / this.getScale(),
             topLeft = pt(body.scrollLeft - (canvas.offsetLeft || 0), body.scrollTop - (canvas.offsetTop || 0)),
             width, height;
-        if (UserAgent.isTouch){
+        if (UserAgent.isTouch || UserAgent.isMobile){
             width = window.innerWidth * scale;
             height = window.innerHeight * scale;
         } else {
