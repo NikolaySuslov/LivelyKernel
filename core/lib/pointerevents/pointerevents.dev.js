@@ -558,6 +558,8 @@
         e.preventDefault = inEvent.preventDefault;
       }
       e._target = e._target || inEvent.target;
+      e.layerX = inEvent.layerX;
+      e.layerY = inEvent.layerY;
       return e;
     },
     // make and dispatch an event in one call
@@ -818,6 +820,8 @@
       e.pointerId = this.POINTER_ID;
       e.isPrimary = true;
       e.pointerType = this.POINTER_TYPE;
+      e.layerX = inEvent.layerX;
+      e.layerY = inEvent.layerY;
       if (!HAS_BUTTONS) {
         e.buttons = WHICH_TO_BUTTONS[e.which] || 0;
       }
@@ -847,8 +851,8 @@
         var p = pointermap.get(this.POINTER_ID);
         if (p && p.button === inEvent.button) {
           var e = this.prepareEvent(inEvent);
-          dispatcher.up(e);
           this.cleanupMouse();
+          dispatcher.up(e);
         }
       }
     },
@@ -1104,7 +1108,7 @@
           // index in pointermap.
           if (key !== 1 && !this.findTouch(tl, key - 2)) {
             var p = value.out;
-            p.target = findTarget(p);
+            p.target = findTarget(p); // in case target was removed from DOM
             d.push(p);
           }
         }, this);

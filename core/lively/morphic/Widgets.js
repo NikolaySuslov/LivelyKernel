@@ -2361,6 +2361,7 @@ lively.morphic.Box.subclass("lively.morphic.TitleBar",
         //Functions.False,
         // TODO: refactor to evt.hand.clickedOnMorph when everything else is ready for it
         evt.hand.clickedOnMorph = this.windowMorph;
+        evt.world.clickedOnMorph = this.windowMorph;
     },
     onMouseUp: Functions.False
 });
@@ -3969,18 +3970,18 @@ lively.morphic.Box.subclass('lively.morphic.Slider',
 'initializing', {
     initialize: function($super, initialBounds, scaleIfAny) {
         $super(initialBounds);
-        connect(this, 'value', this, 'adjustSliderParts');
+        lively.bindings.connect(this, 'value', this, 'adjustSliderParts');
         this.setValue(0);
         this.setSliderExtent(0.1);
         this.valueScale = (scaleIfAny === undefined) ? 1.0 : scaleIfAny;
         this.sliderKnob = this.addMorph(
-            new lively.morphic.SliderKnob(new Rectangle(0, 0, this.mss, this.mss), this));
+            new lively.morphic.SliderKnob(new lively.Rectangle(0, 0, this.mss, this.mss), this));
         this.adjustSliderParts();
         this.sliderKnob.setAppearanceStylingMode(true);
         this.sliderKnob.setBorderStylingMode(true);
         this.setAppearanceStylingMode(true);
         this.setBorderStylingMode(true);
-    },
+    }
 },
 'accessing', {
     getValue: function() { return this.value },
