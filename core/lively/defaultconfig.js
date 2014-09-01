@@ -390,6 +390,18 @@ Config.addOptions(
             return (sslAuth && sslAuth.user) || user;
         },
         set: function(val) { return lively.LocalStorage.set('UserName', val ? val.replace(/ /g, '_') : val); }
+    },
+    {
+        name: 'UserEmail',
+        type: 'String',
+        doc: 'Email of user',
+        get: function() {
+            var val = lively.LocalStorage.get('UserEmail');
+            if (val && val !== 'undefined') return val;
+            var sslAuth = Config.get('ssl-auth');
+            return (sslAuth && sslAuth.email) || val;
+        },
+        set: function(val) { return lively.LocalStorage.set('UserEmail', val ? val.replace(/ /g, '_') : val); }
     }
 ],
 
@@ -493,6 +505,7 @@ Config.addOptions(
 
 'lively.morphic.Events', [
     ["useMetaAsCommand", false, "Use the meta modifier (maps to Command on the Mac) instead of alt"],
+    ["enableHaloItems", true, "enable or disable showing halo items when Command/Control-clicking"],
     ["showGrabHalo", false, "enable grab halo (alternative to shadow) on objects in the hand."],
     ["hideSystemCursor", false],
     ["handleOnCapture", true],
