@@ -158,10 +158,11 @@ Object.subclass('lively.ide.CommandLineInterface.Command',
 
 lively.ide.CommandLineInterface.Command.subclass('lively.ide.CommandLineInterface.PersistentCommand',
 "initializing", {
-    _pid: null
+    _pid: null,
+    _started: false
 },
 'testing', {
-    isRunning: function() { return !this.isDone() && !!this.getPid(); }
+    isRunning: function() { return !this.isDone() && (this._started || !!this.getPid()); }
 },
 "connection", {
 
@@ -176,12 +177,16 @@ lively.ide.CommandLineInterface.Command.subclass('lively.ide.CommandLineInterfac
             return;
         }
         var s = this.getSession();
-        s.sendTo(s.trackerId, selector, msg, function(answer) { thenDo(null, answer); });
+        var serverId = this._options.serverSession ? this._options.serverSession.id : s.trackerId;
+        s.sendTo(serverId, selector, msg, function(answer) { thenDo(null, answer); });
     }
 
 },
 "control", {
     start: function() {
+        if (this._started) return this;
+
+        this._started = true;
         var cmdInstructions = {
             command: this.getCommand(),
             cwd: this._options.cwd,
@@ -189,6 +194,12 @@ lively.ide.CommandLineInterface.Command.subclass('lively.ide.CommandLineInterfac
             stdin: this._options.stdin,
             isExec: false
         }, self = this;
+
+        if (this._options.server && !this._options.serverSession) {
+            this.startServerIDLookup();
+            return;
+        }
+
         this.send('runShellCommand', cmdInstructions, function(err, answer) {
             if (!answer) return;
             if (!answer.expectMoreResponses) { self.onEnd(answer.data); return; }
@@ -252,22 +263,72 @@ lively.ide.CommandLineInterface.Command.subclass('lively.ide.CommandLineInterfac
     getPid: function() { return this._pid; },
 
     kill: function(signal, thenDo) {
-        if (this._done) { thenDo && thenDo(null); return}
-        var pid = this.getPid();
-        if (!pid) { thenDo && thenDo(new Error('Command has no pid!'), null); }
-        var self = this;
-        this.send('stopShellCommand', {signal: signal, pid:pid} , function(err, answer) {
-            err = err || (answer.data && answer.data.error);
-            if (err) show(err);
-            var running = answer && answer.commandIsRunning;
-            self._killed = !running; // hmmmmm
-            thenDo && thenDo(err, answer);
-        });
+        thenDo = Functions.once(thenDo);
+        if (this._done) {
+            thenDo && thenDo();
+        } else if (lively.ide.CommandLineInterface.isScheduled(this, this.getGroup())) {
+            this._killed = true;
+            lively.ide.CommandLineInterface.unscheduleCommand(this, this.getGroup());
+            thenDo && thenDo();
+        } else {
+            var pid = this.getPid();
+            if (!pid) { thenDo && thenDo(new Error('Command has no pid!'), null); }
+            var self = this;
+            this.send('stopShellCommand', {signal: signal, pid:pid} , function(err, answer) {
+                err = err || (answer.data && answer.data.error);
+                if (err) show(err);
+                var running = answer && answer.commandIsRunning;
+                self._killed = !running; // hmmmmm
+                thenDo && thenDo(err, answer);
+            });
+        }
     }
 },
 'internal', {
     getCommand: function() {
         return ["/usr/bin/env", "bash", "-c", this._commandString];
+    },
+
+    startServerIDLookup: function() {
+        var cmd = this;
+        var url = this._options.server;
+        var sess = this.getSession();
+
+        Functions.composeAsync(
+            getIpAddress,
+            getLively2LivelyId,
+            filterTrackerSessions
+        )(function(err, sess) {
+            if (err || !sess) {
+                cmd._stderr = String(err);
+                show("server find session error: %s", err);
+                cmd.onEnd(404);
+            } else {
+                cmd._options.serverSession = sess;
+                cmd._started = false; // FIXME for re-entry
+                cmd.start();
+            }
+        })
+        
+        function getIpAddress(next) {
+            lively.shell.run("nslookup " + url, {}, function(cmd) {
+                var nsLookupString = cmd.resultString(true);
+                var answer = Strings.tableize(nsLookupString).filter(function(entry) { return entry[0] === "Address:" ? entry[1] : null }).last();
+                var ip = answer ? answer.last() : null;
+                next(ip ? null : new Error("nslookup failed"), ip);
+            });
+        }
+        
+        function getLively2LivelyId(ip, next) {
+            lively.net.tools.Functions.withTrackerSessionsDo(sess,
+            function(err, trackers) { next(err, ip, trackers); });
+        }
+        
+        function filterTrackerSessions(ip, trackers, next) {
+            var sess = trackers.detect(function(sess) { return sess.remoteAddress === ip; });
+            next(sess ? null : new Error("Could not find tracker session to run remote shell"), sess);
+        }
+
     }
 },
 'compatibility', {
@@ -281,8 +342,8 @@ Object.extend(lively.ide.CommandLineInterface, {
 
     reset: function() {
         this.rootDirectory = null,
-        this.commandQueue && Properties.forEachOwn(this.commandQueue, function(group, cmds) {
-            cmds.invoke('kill'); })
+        this.commandQueue && Properties.forEachOwn(this.commandQueue,
+            function(group, cmds) { cmds.forEach(function(cmd) { cmd.kill(); }); });
         this.commandQueue = {};
     },
     getGroupCommandQueue: function(group) {
@@ -752,7 +813,7 @@ Object.extend(lively.ide.CommandLineSearch, {
         if (lastFind) lastFind.kill();
         var result = [],
             cmd = lively.ide.CommandLineInterface.exec(commandString, options, function(cmd) {
-                if (cmd.getCode() != 0) { console.warn(cmd.getStderr()); return []; }
+                if (cmd.getCode() != 0) console.warn(cmd.getStderr());
                 result = parseDirectoryList(cmd.getStdout(), rootDirectory);
                 callback && callback(result);
             });

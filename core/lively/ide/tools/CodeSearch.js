@@ -139,24 +139,33 @@ lively.BuildSpec('lively.ide.tools.CodeSearch', {
 
         {
             _Extent: lively.pt(200,18.0),
-            _Position: lively.pt(5,22+478+3),
+            _Position: lively.pt(5,22+478+4),
             _FontFamily: "Arial, sans-serif",
             _FontSize: 8,
+            _HandStyle: "default",
+            _InputAllowed: false,
+            allowInput: false,
             className: "lively.morphic.Text",
             droppingEnabled: false,
             fixedWidth: true,
             grabbingEnabled: false,
-            layout: { resizeWidth: false },
+            layout: {
+                resizeWidth: false,
+                moveVertical: true
+            },
             name: "resultText",
             textString: "0 matches"
         },{
             _BorderColor: Color.rgb(204,0,0),
             _Extent: lively.pt(12.0,12.0),
-            _Position: lively.pt(590,22+478),
+            _Position: lively.pt(590,24+478),
             checked: false,
             className: "lively.morphic.CheckBox",
             droppingEnabled: true,
-            layout: {moveHorizontal: true},
+            layout: {
+                moveHorizontal: true,
+                moveVertical: true
+            },
             name: "serversearchCheckBox",
             sourceModule: "lively.morphic.Widgets",
             connectionRebuilder: function connectionRebuilder() {
@@ -164,7 +173,7 @@ lively.BuildSpec('lively.ide.tools.CodeSearch', {
             }
         }, {
             _Extent: lively.pt(90.0,18.0),
-            _Position: lively.pt(614.0,22+478+3),
+            _Position: lively.pt(614.0,22+478+4),
             _FontFamily: "Arial, sans-serif",
             _FontSize: 8,
             _HandStyle: "default",
@@ -173,7 +182,10 @@ lively.BuildSpec('lively.ide.tools.CodeSearch', {
             className: "lively.morphic.Text",
             fixedWidth: true,
             grabbingEnabled: false,
-            layout: {moveHorizontal: true},
+            layout: {
+                moveHorizontal: true,
+                moveVertical: true
+            },
             name: "serversearchCheckBoxLabel",
             textString: "searchOnServer",
             onMouseDown: function onMouseDown(evt) {
@@ -202,16 +214,16 @@ lively.BuildSpec('lively.ide.tools.CodeSearch', {
         });
     }
 
-    Functions.debounceNamed(this.id+'doSearch', 800, function(searchTerm) {
+    Functions.debounceNamed(this.id+'doSearch', 800, function(searchTerm, thenDo) {
         loadingIndicator.setLabel('Loading...');
         self.getWindow().setTitle('CodeSearch for ' + String(searchTerm).truncate(100));
-        searchMethod.bind(self, searchTerm, function(err, list) {
+        searchMethod.call(self, searchTerm, function(err, list) {
             isLoaded = true;
-            if (loadingIndicator) loadingIndicator.remove();
-            false && show('search done')
+            lively.bindings.connect(self.get('FilterableList'), 'rendered', loadingIndicator, 'remove', {removeAfterUpdate: true});
+            lively.bindings.connect(self.get('FilterableList'), 'rendered', self.get('resultText'), 'textString', { converter: function() { return this.sourceObj.get('list').getList().length + ' matches'; } })
             thenDo && thenDo.call(self, err, list);
-        }).delay(0.1);
-    })(searchTerm);
+        });
+    })(searchTerm, thenDo);;
 },
     reset: function reset() {
     this.get('FilterableList').reset();
@@ -501,7 +513,7 @@ lively.BuildSpec('lively.ide.tools.CodeSearch', {
                 var parts = candidate.match.split(':'),
                     path = parts[0], line = parts[1];
                 if (line) path += ':' + line;
-                return lively.ide.openFile(path);
+                lively.ide.openFile(path);
             }
 
             function openInSCB(candidate) {
@@ -521,8 +533,9 @@ lively.BuildSpec('lively.ide.tools.CodeSearch', {
         }
 
         if (find.type === 'script') {
-            var ed = $world.openObjectEditorFor(find.object);
-            ed.targetMorph.get('ObjectEditorScriptList').setSelection(find.selector);
+            $world.openObjectEditorFor(find.object, function(ed) {
+                ed.targetMorph.get('ObjectEditorScriptList').setSelection(find.selector);
+            });
             return;
         }
 

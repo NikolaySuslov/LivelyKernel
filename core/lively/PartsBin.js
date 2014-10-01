@@ -1,4 +1,4 @@
-module('lively.PartsBin').requires('lively.Traits').toRun(function() {
+module('lively.PartsBin').requires('lively.Traits', 'lively.store.Interface').toRun(function() {
 
 Object.subclass('lively.PartsBin.PartItem',
 'initializing', {
@@ -166,6 +166,7 @@ Object.subclass('lively.PartsBin.PartItem',
 },
 'upload and download', {
     load: function(isAsync, rev) {
+
         if(!isAsync){
             var webR = new WebResource(this.getFileURL()).noProxy().forceUncached();
             if (isAsync) webR.beAsync();
@@ -178,11 +179,12 @@ Object.subclass('lively.PartsBin.PartItem',
             webR.get();
             return this;
         }
-        
-        var self = this,
-            path = this.getFileURL().relativePathFrom(URL.root),
-            query = !!rev || rev === 0 ?
-                {
+
+        var url = this.getFileURL(),
+            root = url.withPath("/"),
+            path = url.relativePathFrom(root),
+            self = this,
+            query = !!rev || rev === 0 ? {
                     paths: [path],
                     attributes: ['content'],
                     version: rev,
@@ -194,13 +196,9 @@ Object.subclass('lively.PartsBin.PartItem',
                     limit: 1
                 };
 
-        new lively.store.ObjectRepository().getRecords(query, function(err, rows) {
-            if (err) {
-                show(err);
-                self.json = null
-            } else {
-                self.json = rows[0].content;
-            }
+        new lively.store.ObjectRepository(root).getRecords(query, function(err, rows) {
+            if (err) { show(err); self.json = null; return; }
+            self.json = rows[0].content;
         });
         return this;
     },
@@ -240,7 +238,7 @@ Object.subclass('lively.PartsBin.PartItem',
                     console.log('Error on setPartFromJSON: ' + e)
                 }
             },
-            triggerCallback: cb ? cb.curry(null) : Functions.Null,
+            triggerCallback: cb ? Functions.once(cb.curry(null)) : Functions.Null,
         }
         lively.bindings.connect(this, 'json', loadTrigger, 'jsonLoaded', {removeAfterUpdate: true});
         lively.bindings.connect(this, 'loadedMetaInfo', loadTrigger, 'metaInfoLoaded', {removeAfterUpdate: true});
@@ -251,60 +249,61 @@ Object.subclass('lively.PartsBin.PartItem',
     },
 
     loadPartVersions: function(isAsync) {
-        module('lively.store.Interface').load(true);
-        var self = this,
-            path = this.getFileURL().relativePathFrom(URL.root)
-        new lively.store.ObjectRepository().getRecords({
-            paths: [path],
-            attributes: ['path', 'date', 'author', 'change', 'version']
-        }, function(err, rows) {
-            if (err) {
-                show(err);
-            } else {
-                self.partVersions = rows;
-            }
-        });
+        // FIXME, what if PartsBin is not at root?
+        var url = this.getFileURL(),
+            root = url.withPath("/"),
+            path = url.relativePathFrom(root),
+            self = this;
+
+        function processVersions(err, rows) {
+            if (err) show(err);
+            else self.partVersions = rows;
+        }
+
+        var result = new lively.store.ObjectRepository(root).getRecords({
+                paths: [path],
+                attributes: ['path', 'date', 'author', 'change', 'version']
+            }, isAsync ? processVersions : null);
+        if (!isAsync) processVersions(result.error ? result.error : null, result);
+
         return this;
     },
 
     loadPartMetaInfo: function(isAsync, rev) {
         if (!isAsync) {
-            var webR = new WebResource(this.getMetaInfoURL());
-            if (isAsync) webR.beAsync();
-            connect(webR, 'content', this, 'loadedMetaInfo', {updater: function($upd, json) {
+            var webR = new WebResource(this.getMetaInfoURL()).beSync();
+            lively.bindings.connect(webR, 'content', this, 'loadedMetaInfo', {updater: function($upd, json) {
                 if (!this.sourceObj.status.isSuccess()) return $upd(null);
                 if (!this.sourceObj.status.isDone()) return;
                 var metaInfo = lively.persistence.Serializer.deserialize(json);
-                metaInfo.lastModifiedDate = source.lastModified;
+                metaInfo.lastModifiedDate = this.sourceObj.lastModified;
                 $upd(metaInfo);
             }});
             webR.forceUncached().get();
             return this;
         }
-        var self = this,
-            path = this.getMetaInfoURL().relativePathFrom(URL.root),
-            query = !!rev ?
-                {
-                    paths: [path],
-                    attributes: ['content', 'date'],
-                    version: rev,
-                    limit: 1
-                } : {
-                    paths: [path],
-                    attributes: ['content', 'date'],
-                    newest: true,
-                    limit: 1
-                };
 
-        new lively.store.ObjectRepository().getRecords(query, function(err, rows) {
-            if (err) {
-                show(err);
-                self.loadedMetaInfo = null
-            } else {
-                var metaInfo = lively.persistence.Serializer.deserialize(rows[0].content)
-                metaInfo.lastModifiedDate = new Date(rows[0].date);
-                self.loadedMetaInfo = metaInfo;
-            }
+        var url = this.getMetaInfoURL(),
+            root = url.withPath("/"),
+            path = url.relativePathFrom(root),
+            self = this,
+            query = !!rev ? {
+                paths: [path],
+                attributes: ['content', 'date'],
+                version: rev,
+                limit: 1
+            } : {
+                paths: [path],
+                attributes: ['content', 'date'],
+                newest: true,
+                limit: 1
+            };
+
+        new lively.store.ObjectRepository(root).getRecords(query, function(err, rows) {
+            if (err) { show(err); self.loadedMetaInfo = null; return; }
+            var metaInfo = lively.persistence.Serializer.deserialize(rows[0].content)
+            metaInfo.lastModifiedDate = new Date(rows[0].date);
+            self.loadedMetaInfo = metaInfo;
         });
     },
 
@@ -329,7 +328,6 @@ Object.subclass('lively.PartsBin.PartItem',
 
     del: function() {
         this.getPartsSpace().removePartItemNamed(this.name);
-        new WebResource(this.getLogoURL()).beAsync().del();
         new WebResource(this.getHTMLLogoURL()).beAsync().del();
         new WebResource(this.getFileURL()).beAsync().del();
         new WebResource(this.getMetaInfoURL()).beAsync().del();
@@ -349,8 +347,9 @@ Object.subclass('lively.PartsBin.PartItem',
         var name = this.part.name,
             serialized = this.serializePart(this.part);
 
-        // 2. start the upload...
-        var webR = new WebResource(this.getFileURL())
+        // 2. start the upload... but first make sure the directory exists
+        var webR = new WebResource(this.getFileURL().getDirectory()).beSync().ensureExistance();
+        webR = new WebResource(this.getFileURL())
             [isSync ? 'beSync' : 'beAsync']()
             .createProgressBar('Uploading ' + name);
 
@@ -409,7 +408,8 @@ Object.subclass('lively.PartsBin.PartItem',
 
     handleSaveStatus: function(webR) {
         // handles the request for overwrite on header 412
-        var status = webR.status;
+        var status = webR.status,
+            world = lively.morphic.World.current();
         if (!status.isDone()) return;
         if (status.code() === 412) {
             if (status.url.asWebResource().exists()) {
@@ -421,8 +421,7 @@ Object.subclass('lively.PartsBin.PartItem',
             return;
         }
         if (status.isSuccess()) {
-            var world = lively.morphic.World.current(),
-                metaInfo = this.part.getPartsBinMetaInfo();
+            var metaInfo = this.part.getPartsBinMetaInfo();
             world.alertOK("Successfully saved "+status.url+" in PartsBin.")
             metaInfo.lastModifiedDate = webR.lastModified;
             this.updateRevisionOnLoad();
@@ -430,6 +429,11 @@ Object.subclass('lively.PartsBin.PartItem',
                 world.publishPartDialog.remove();
                 delete world.publishPartDialog;
             }
+        } else if (status.isForbidden()) {
+            world.createStatusMessage('Saving to:\n' + status.url + '\nis not allowed!', {
+                openAt: 'center', fill: Color.red, extent: pt(400, 75)
+                // removeAfter: 5000, textStyle: { align: 'center' }
+            });
         } else {
             var msg = 'Problem saving ' + status.url + ': ' + status;
             Config.verboseLogging ? alert(msg) : console.error(msg);
@@ -642,13 +646,48 @@ Object.extend(lively.PartsBin, {
             world = lively.morphic.World.currentWorld;
 
         if (world && world.getUserName(true)) {
-            var userUrl = new URL(world.getUserDir() + "/PartsBin");
-            if (userUrl.asWebResource().exists()) {
+            var userUrl = new URL(world.getUserDir().withFilename('PartsBin/'));
+            if (userUrl.asWebResource().exists())
                 additionalURLs.push(userUrl);
-            }
         }
         return [localURL].concat(additionalURLs);
+    },
+
+    discoverPartSpaces: function(thenDo) {
+        var pb = lively.PartsBin;
+        var webR = pb.getLocalPartsBinURL().asWebResource()
+            .beAsync()
+            .getSubElements(1).whenDone(function(result, status) {
+                (function() {
+                    webR.subCollections.invoke("getURL").map(pb.partsSpaceWithURL.bind(pb));
+                    show(webR.subCollections.invoke("getURL"));
+                    if (thenDo) thenDo(null, pb.partSpaces);
+                }).delay(0);
+            });
+    },
+
+    copyRemotePart: function(partName, partsSpaceName, serverURL, thenDo) {
+        var fromURL = new URL(serverURL).withFilename(partsSpaceName).asDirectory();
+        var files = ['.json', '.html', '.metainfo'].map(function(ea) { return  partName + ea; });
+        var toURL = URL.root.withFilename(partsSpaceName).asDirectory();
+        toURL.asWebResource().ensureExistance();
+        var errors = [];
+        files.clone().doAndContinue(function(next, file) {
+            Functions.composeAsync(
+                function(next) {
+                    fromURL.withFilename(file).asWebResource().noProxy()
+                        .beAsync().get().whenDone(function(content, status) {
+                            next(status.isSuccess() ? null : status, content); });
+                },
+                function(content, next) {
+                    toURL.withFilename(file).asWebResource()
+                        .beAsync().put(content).whenDone(function(_, status) {
+                            next(status.isSuccess() ? null : status); });
+                }
+            )(function(err) { if (err) errors.push(err); files.remove(file); next(); });
+        }, function() { thenDo && thenDo(errors.length ? errors : null); });
     }
+
 });
 
 Trait('lively.PartsBin.PartTrait', {

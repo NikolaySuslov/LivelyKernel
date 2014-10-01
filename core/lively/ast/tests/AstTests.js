@@ -27,6 +27,10 @@ TestCase.subclass('lively.ast.tests.AstTests.Acorn',
             src: 'var x = 1; x;',
             target: function(ast) { return ast.body[1]; },
             expected: function(ast) { return ast.body[1]; },
+        }, {
+            src: 'switch (123) { case 123: debugger; }',
+            target: function(ast) { return ast.body[0].cases[0].consequent[0]; },
+            expected: function(ast) { return ast.body[0].cases[0].consequent[0]; },
         }]
 
         tests.forEach(function(test, i) {
@@ -344,6 +348,13 @@ TestCase.subclass('lively.ast.tests.Transforming',
             expected = "var z = foo + bar; return baz.foo(z, 3)",
             transformed = lively.ast.transform.returnLastStatement(code);
         this.assertEquals(expected, transformed);
+    },
+
+    testWrapInFunction: function() {
+        var code = "var z = foo + bar; baz.foo(z, 3);",
+            expected = "function() {\nvar z = foo + bar; return baz.foo(z, 3);\n}",
+            transformed = lively.ast.transform.wrapInFunction(code);
+        this.assertEquals(expected, transformed);
     }
 
 })
@@ -427,8 +438,21 @@ TestCase.subclass('lively.ast.tests.Querying',
             result = lively.ast.query.topLevelDeclsAndRefs(code),
             expected = ["show"];
         this.assertEqualState(expected, result.undeclaredNames);
-    }
+    },
 
+    testRecognizeArrowFunctionDeclaration: function() {
+        var code = "this.addScript((n, run) => { if (n > 0) run(n-1); show('done'); });",
+            result = lively.ast.query.topLevelDeclsAndRefs(code),
+            expected = ["show"];
+        this.assertEqualState(expected, result.undeclaredNames);
+    },
+
+    testRecognizeClassDeclaration: function() {
+        var code = "class Foo {\n" + "  constructor(name) { this.name = name; }\n" + "}\n"+ "new Foo();",
+            result = lively.ast.query.topLevelDeclsAndRefs(code),
+            expected = [];
+        this.assertEqualState(expected, result.undeclaredNames);
+    }
 });
 
 }); // end of module

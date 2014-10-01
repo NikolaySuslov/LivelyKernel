@@ -150,12 +150,11 @@ lively.BuildSpec('lively.net.tools.ConnectionIndicator', {
         this.setExtent(lively.pt(130.0,30.0));
         this.alignInWorld();
         this.alignNotificationIcon();
-    }, 500, function() {
         if (this.menu) {
             this.menu.remove();
             this.menu = null;
         }
-    });
+    }, 500, function() {});
 },
     expand: function expand() {
     var self = this,
@@ -163,13 +162,22 @@ lively.BuildSpec('lively.net.tools.ConnectionIndicator', {
         isConnected = lively.net.SessionTracker.isConnected(),
         allowRemoteEval = !!lively.Config.get('lively2livelyAllowRemoteEval');
     if (!isConnected) {
+        items.push(['show login info', function() {
+            lively.net.Wiki.showLoginInfo();
+            self.collapse();
+        }]);
         items.push(['connect', function() {
             lively.net.SessionTracker.resetSession();
             self.update.bind(self).delay(0.2);
             self.collapse();
         }]);
     } else {
-        items = [['open chat', function() {
+        items = [
+        ['show login info', function() {
+            lively.net.Wiki.showLoginInfo();
+            self.collapse();
+        }],
+        ['open chat', function() {
             if ($morph('Lively2LivelyChat')) $morph('Lively2LivelyChat').openInWorldCenter().comeForward();
             else lively.BuildSpec('lively.net.tools.Lively2LivelyChat').createMorph().openInWorldCenter();
             // -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
@@ -196,7 +204,7 @@ lively.BuildSpec('lively.net.tools.ConnectionIndicator', {
     var m = this.menu = new lively.morphic.Menu(null, items);
     m.openIn(this, pt(0,-items.length * 23), false);
     this.withCSSTransitionForAllSubmorphsDo(function() {
-        this.setExtent(pt(140, this.getExtent().y + m.getExtent().y + 10));
+        this.setExtent(pt(140, m.getExtent().y + 15));
         this.alignInWorld();
         this.alignNotificationIcon();
     }, 500, function() {});

@@ -669,6 +669,10 @@ lively.morphic.Morph.subclass('lively.morphic.Text', Trait('TextChunkOwner'),
         if (evt.isShiftDown()) {
             this.priorSelectionRange = this.getSelectionRange();
         }
+        
+        if (UserAgent.isChrome && UserAgent.isMobile) {
+            this.onKeyPress(evt);
+        }
 
         evt.stop();
         return true;
@@ -1685,7 +1689,7 @@ lively.morphic.Morph.subclass('lively.morphic.Text', Trait('TextChunkOwner'),
         function isWhiteSpace(c) { return c === '\t' || c === ' '; }
         function isAlpha(s) {
             var regEx = /^[a-zA-Z0-9\-]+$/;
-            return s.match(regEx);
+            return (s || '').match(regEx);
         };
         function periodWithDigit(c, prev) {
             // return true iff c is a period and prev is a digit
@@ -1793,9 +1797,9 @@ lively.morphic.Morph.subclass('lively.morphic.Text', Trait('TextChunkOwner'),
                 try { return eval(str = "("+__evalStatement+")")} catch (e) { return eval(str = __evalStatement) }
                 };
         try {
-            var result = interactiveEval.call(ctx);
-            if (Config.changesetsExperiment && $world.getUserName() &&
-        localStorage.getItem("LivelyChangesets:" +  $world.getUserName() + ":" + location.pathname) !== "off")
+            var result = interactiveEval.call(ctx),
+                itemName = "Changesets:" +  $world.getUserName() + ":" + location.pathname;
+            if (Config.changesetsExperiment && $world.getUserName() && lively.LocalStorage.get(itemName) !== "off")
                 lively.ChangeSet.logDoit(str, ctx.lvContextPath());
             return result;
         } catch(e) {throw e}
@@ -2938,6 +2942,7 @@ Object.subclass('lively.morphic.TextEmphasis',
                     node.style.textDecoration = 'none';
                     node.style.color = 'inherit';
                     LivelyNS.removeAttribute(node, 'doit');
+                    lively.$(node).removeClass("doit");
                     delete this.doit;
                     return;
                 }
@@ -2956,6 +2961,7 @@ Object.subclass('lively.morphic.TextEmphasis',
                 node.style.cursor = 'pointer';
                 node.style.textDecoration = 'underline';
                 node.style.color = 'darkgreen';
+                lively.$(node).addClass("doit");
                 LivelyNS.setAttribute(node, 'doit', doit.code);
             }
         },

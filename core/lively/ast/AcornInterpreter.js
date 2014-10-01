@@ -359,9 +359,6 @@ Object.subclass('lively.ast.AcornInterpreter.Interpreter',
         var condVal = state.result;
         state.result = oldResult;
 
-        if (frame.isResuming() && this.wantsInterpretation(node.consequent, frame)) {
-            condVal = true; // resuming node inside true branch
-        }
         if (condVal) {
             this.accept(node.consequent, state);
         } else if (node.alternate) {
@@ -1079,7 +1076,7 @@ Object.subclass('lively.ast.AcornInterpreter.Function',
 
         var ast = this.getAst();
         if (ast._parentEntry != null) {
-            source = __getClosure(ast._parentEntry).source;
+            source = __getClosure(ast.sourceFile || "[runtime]", ast._parentEntry).source;
         }
         if (!source && ast.sourceFile) {
             source = new WebResource(URL.root.withFilename(ast.sourceFile)).get().content;
@@ -1152,8 +1149,9 @@ Object.subclass('lively.ast.AcornInterpreter.Function',
         } else if (thisObject && lively.Class.isClass(thisObject) && fn.displayName) {
             $world.browseCode(thisObject.name, fn.displayName, (fn.sourceModule || thisObject.sourceModule).name());
         } else if (thisObject && thisObject.isMorph && this.node.type != 'Program') {
-            var ed = $world.openObjectEditorFor(thisObject);
-            ed.targetMorph.get('ObjectEditorScriptList').setSelection(fn.methodName || this.name());
+            $world.openObjectEditorFor(thisObject, function(ed) {
+                ed.targetMorph.get('ObjectEditorScriptList').setSelection(fn.methodName || this.name());
+            });
         } else
             //TODO: Add browse implementation for other functions
             throw new Error('Cannot browse anonymous function ' + this);

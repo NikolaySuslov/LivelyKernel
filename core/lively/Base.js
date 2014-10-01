@@ -29,6 +29,18 @@
 /**
   * LK class system.
   */
+
+if (Function.prototype.name === undefined) {
+    Function.prototype.__defineGetter__("name", function () {
+	var md = (this + "").match(/function\s+(.*)\s*\(\s*/);
+	if (md) {
+	    return md[1];
+	} else {
+	    return "Empty";
+	}
+    });
+}
+
 Object.extend(Function.prototype, {
 
     defaultCategoryName: 'default category',
@@ -297,7 +309,7 @@ lively.Class = {
         var src = lively.Class.initializerTemplate.replace(/CLASS/g, name);
         if (lively.Config.loadRewrittenCode) {
             var idx = src.match('.*storeFrameInfo\([^\)]*, ([0-9]+)\)')[2];
-            src = '__createClosure(' + idx + ', Global, ' + src + ');';
+            src = '__createClosure("core/lively/Base.js", ' + idx + ', Global, ' + src + ');';
         } else
             src += ' ' + name;
         return eval(src);

@@ -79,11 +79,7 @@ Object.subclass('lively.ide.CodeEditor.KeyboardShortcuts',
 },
 'shortcuts', {
     setupEvalBindings: function(kbd) {
-        function doEval(ed, insertResult) {
-            var mode = ed.session.getMode();
-            if (!mode.doEval) ed.$morph.doit(insertResult);
-            else mode.doEval(ed.$morph, insertResult)
-        }
+
         this.addCommands(kbd, [{
                 name: 'evalAll',
                 exec: function(ed, args) {
@@ -92,7 +88,7 @@ Object.subclass('lively.ide.CodeEditor.KeyboardShortcuts',
                     }
                     ed.$morph.saveExcursion(function(whenDone) {
                         ed.$morph.selectAll();
-                        doEval(ed, false);
+                        maybeUseModeFunction(ed, "doEval", "doit", [false]);
                         whenDone();
                     });
                 },
@@ -101,7 +97,7 @@ Object.subclass('lively.ide.CodeEditor.KeyboardShortcuts',
             }, {
                 name: 'doit',
                 bindKey: {win: 'Ctrl-D',  mac: 'Command-D'},
-                exec: function(ed) { doEval(ed, false); },
+                exec: function(ed) { maybeUseModeFunction(ed, "doEval", "doit", [false]); },
                 multiSelectAction: "forEach",
                 readOnly: true // false if this command should not apply in readOnly mode
             }, {
@@ -113,7 +109,7 @@ Object.subclass('lively.ide.CodeEditor.KeyboardShortcuts',
             }, {
                 name: 'printit',
                 bindKey: {win: 'Ctrl-P',  mac: 'Command-P'},
-                exec: function(ed) { doEval(ed, true); },
+                exec: function(ed) { maybeUseModeFunction(ed, "doEval", "doit", [true]);; },
                 multiSelectAction: "forEach",
                 readOnly: false
             }, {
@@ -132,7 +128,7 @@ Object.subclass('lively.ide.CodeEditor.KeyboardShortcuts',
                 name: 'printInspect',
                 bindKey: {win: 'Ctrl-I',  mac: 'Command-I'},
                 exec: function(ed, args) {
-                    ed.$morph.printInspect({depth: args && args.count});
+                    maybeUseModeFunction(ed, "printInspect", "printInspect", [{depth: args && args.count}]);
                 },
                 multiSelectAction: "forEach",
                 handlesCount: true,
@@ -167,6 +163,15 @@ Object.subclass('lively.ide.CodeEditor.KeyboardShortcuts',
             }]);
             // FIXME for some reason this does not work with bindKeys?!
             kbd.bindKey("»", 'runShellCommandOnRegion');
+
+        // -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+        function maybeUseModeFunction(ed, featureName, morphMethodName, args) {
+            var mode = ed.session.getMode();
+            var morph = ed.$morph;
+            if (!mode[featureName]) morph[morphMethodName].apply(morph, args);
+            else mode[featureName].apply(mode, [morph].concat(args));
+        }
     },
 
     setupTextManipulationBindings: function(kbd) {
@@ -808,7 +813,7 @@ Object.subclass('lively.ide.CodeEditor.KeyboardShortcuts',
             var sel = codeEditor.getSelection(),
                 pos = sel.lead,
                 idx = codeEditor.positionToIndex(pos),
-                nav = new lively.ide.codeeditor.JS.Navigator(),
+                nav = new lively.ide.codeeditor.modes.JavaScript.Navigator(),
                 newIdx = nav[selector](codeEditor.textString, idx),
                 newPos = codeEditor.indexToPosition(newIdx),
                 isBackward = sel.isBackwards(),
@@ -819,7 +824,7 @@ Object.subclass('lively.ide.CodeEditor.KeyboardShortcuts',
         }
 
         function select(selector, codeEditor) {
-            var nav = new lively.ide.codeeditor.JS.Navigator(),
+            var nav = new lively.ide.codeeditor.modes.JavaScript.Navigator(),
                 newRangeIndices = nav[selector](codeEditor.textString, codeEditor.getSelectionRange());
             if (newRangeIndices) codeEditor.setSelectionRange(newRangeIndices[0], newRangeIndices[1]);
         }
@@ -873,7 +878,7 @@ Object.subclass('lively.ide.CodeEditor.KeyboardShortcuts',
             exec: function(ed) {
                 ed.$morph.withASTDo(function(ast) {
                     var state = ed.$expandRegionState || (ed.$expandRegionState = {range: ed.$morph.getSelectionRange()});
-                    var nav = new lively.ide.codeeditor.JS.RangeExpander();
+                    var nav = new lively.ide.codeeditor.modes.JavaScript.RangeExpander();
                     var newState = nav.expandRegion(ed.$morph.textString, ast, state);
                     if (newState && newState.range) {
                         ed.$morph.setSelectionRange(newState.range[0], newState.range[1]);
@@ -891,7 +896,7 @@ Object.subclass('lively.ide.CodeEditor.KeyboardShortcuts',
                 ed.$morph.withASTDo(function(ast) {
                     var state = ed.$expandRegionState;
                     if (!state) return;
-                    var nav = new lively.ide.codeeditor.JS.RangeExpander();
+                    var nav = new lively.ide.codeeditor.modes.JavaScript.RangeExpander();
                     var newState = nav.contractRegion(ed.$morph.textString, ast, state);
                     if (newState && newState.range) {
                         ed.$morph.setSelectionRange(newState.range[0], newState.range[1]);

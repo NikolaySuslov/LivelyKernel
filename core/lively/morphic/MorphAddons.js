@@ -138,7 +138,7 @@ Object.extend(lively.morphic, {
 
     edit: function(obj) {
         if (Global.lively && lively.morphic && lively.morphic.World.current())
-            return lively.morphic.World.current().openObjectEditorFor(obj);
+            lively.morphic.World.current().openObjectEditorFor(obj);
     },
 
     showCallStack: function() {
@@ -746,7 +746,7 @@ lively.morphic.World.addMethods(
 
         if (!lively.Config.get('verboseLogging')) return null;
 
-        var msgMorph = this.createStatusMessage(msg, {fill: color});
+        var msgMorph = this.createStatusMessage(msg, Object.merge([{fill: color}, optStyle]));
         // callbacks are currently not supported...
         if (false && callback) {
             var btn = new lively.morphic.Button(lively.rect(0,0,50,20), 'more')
@@ -831,12 +831,12 @@ lively.morphic.World.addMethods(
         var textMsg = msgMorph.addMorph(new lively.morphic.Text(msgMorph.innerBounds().insetBy(10), ''));
         textMsg.name = 'messageText'
         textMsg.addStyleClassName(textMsg.name);
-        textMsg.beLabel({
+        textMsg.beLabel(Object.merge([{
             fixedWidth: true, fixedHeight: true,
             resizeWidth: true, resizeHeight: true,
             allowInput: false,
             clipMode: 'visible', whiteSpaceHandling: 'pre'
-        });
+        }, (options.textStyle || {})]));
 
         // -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
@@ -1138,12 +1138,12 @@ lively.morphic.Box.subclass('lively.morphic.Panel',
         codePane.evalEnabled = true;
         codePane.applyStyle({scaleProportional: true});
         codePane.savedTextString = codePane.textString;
-        if(localStorage.getItem("LivelyChangesets:" + location.pathname))
+        if (lively.LocalStorage.get('Changesets:' + location.pathname))
             codePane.doBrowseImplementors = function () {
-                openFunctionList('implementors', this.getSelectionOrLineString())};
-        if(localStorage.getItem("LivelyChangesets:" + location.pathname))
+                openFunctionList('implementors', this.getSelectionOrLineString()); };
+        if (lively.LocalStorage.get('Changesets:' + location.pathname))
             codePane.doBrowseReferences = function () {
-                openFunctionList('references', this.getSelectionOrLineString(), true)};
+                openFunctionList('references', this.getSelectionOrLineString(), true); };
         return codePane
     },
     newReadOnlyCodePane: function newReadOnlyCodePane(extent) {
@@ -1151,12 +1151,12 @@ lively.morphic.Box.subclass('lively.morphic.Panel',
         codePane.enableSyntaxHighlighting();
         codePane.evalEnabled = true;
         codePane.applyStyle({scaleProportional: true, allowInput: false});
-        if(localStorage.getItem("LivelyChangesets:" + location.pathname))
+        if (lively.LocalStorage.get("Changesets:" + location.pathname))
             codePane.doBrowseImplementors = function () {
-                openFunctionList('implementors', this.getSelectionOrLineString())};
-        if(localStorage.getItem("LivelyChangesets:" + location.pathname))
+                openFunctionList('implementors', this.getSelectionOrLineString()); };
+        if (lively.LocalStorage.get("Changesets:" + location.pathname))
             codePane.doBrowseReferences = function () {
-                openFunctionList('references', this.getSelectionOrLineString(), true)};
+                openFunctionList('references', this.getSelectionOrLineString(), true); };
         return codePane;
     },
 
@@ -1293,6 +1293,21 @@ lively.morphic.Morph.addMethods(
                     default        : return "transitionend";
                 }
             })();
+        var remover = (function(evt) {
+            morphs.forEach(function(ea) { behaveNormal(ea); });
+            self.renderContext().morphNode.removeEventListener(endEvent, remover, false);
+            whenDone && whenDone.call(self);
+        });
+
+        self.renderContext().morphNode.addEventListener(endEvent, remover, false);
+
+        (function run() {
+            morphs.forEach(behaveAnimated);
+            morphModifyFunc.call(self);
+        }).delay(0);
+
+        // -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
         function behaveAnimated(morph) { 
             var morphNode = morph.renderContext().morphNode,
                 shapeNode = morph.renderContext().shapeNode;
@@ -1301,24 +1316,16 @@ lively.morphic.Morph.addMethods(
             morphNode.style[durationProp] = duration + "ms";
             shapeNode.style[durationProp] = duration + "ms";
         }
+
         function behaveNormal(morph) { 
             var morphNode = morph.renderContext().morphNode,
                 shapeNode = morph.renderContext().shapeNode;
             morphNode.style[transitionProp] = "";
-            morphNode.style[durationProp] = "";
             shapeNode.style[transitionProp] = "";
+            morphNode.style[durationProp] = "";
             shapeNode.style[durationProp] = "";
         }
-        var remover = (function(evt) {
-            morphs.forEach(function(ea) { behaveNormal(ea); });
-            self.renderContext().morphNode.removeEventListener(endEvent, remover, false);
-            whenDone && whenDone.call(self);
-        });
-        self.renderContext().morphNode.addEventListener(endEvent, remover, false);
-        (function run() {
-            morphs.forEach(function(ea) { behaveAnimated(ea); });
-            morphModifyFunc.call(self);
-        }).delay(0);
+
     },
 
 

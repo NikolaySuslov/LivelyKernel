@@ -1005,7 +1005,7 @@ Object.extend(lively.ide.commands.byName, {
     },
     'lively.ide.openTextWindow': {description: 'open Text window', isActive: lively.ide.commands.helper.noCodeEditorActive, exec: function() { $world.openTextWindow(); return true; }},
     'lively.ide.openSystemCodeBrowser': {description: 'open SystemCodeBrowser', isActive: lively.ide.commands.helper.noCodeEditorActive, exec: function() { $world.openSystemBrowser(); return true; }},
-    'lively.ide.openObjectEditor': {description: 'open ObjectEditor', isActive: lively.ide.commands.helper.noCodeEditorActive, exec: function() { $world.openObjectEditor().comeForward(); return true; }},
+    'lively.ide.openObjectEditor': {description: 'open ObjectEditor', isActive: lively.ide.commands.helper.noCodeEditorActive, exec: function() { $world.openObjectEditor(); return true; }},
     'lively.ide.openBuildSpecEditor': {description: 'open BuildSpecEditor', isActive: lively.ide.commands.helper.noCodeEditorActive, exec: function() { $world.openBuildSpecEditor(); return true; }},
     'lively.ide.openWorldCSSEditor': {description: 'open CSS Editor', isActive: lively.ide.commands.helper.noCodeEditorActive, exec: function() { $world.openWorldCSSEditor(); return true; }},
     'lively.ide.openTestRunner': {description: 'open TestRunner', isActive: lively.ide.commands.helper.noCodeEditorActive, exec: function() { $world.openTestRunner(); return true; }},
@@ -1447,6 +1447,15 @@ Object.extend(lively.ide.commands.byName, {
         }
     },
 
+    "lively.net.wiki.tools.showLoginInfo": {
+        description: "show login info",
+        exec: function(withInfoMorphDo) {
+            lively.require("lively.net.Wiki").toRun(function() {
+                lively.net.Wiki.showLoginInfo(withInfoMorphDo);
+            });
+        }
+    },
+
     // debugging
     'lively.ide.debugging.globalTrace': {
         description: "start / stop global tracing",
@@ -1532,6 +1541,7 @@ Object.extend(lively.ide.commands.defaultBindings, { // bind commands to default
     'lively.ide.resizeWindow.bottom': {mac: "cmd-s-l r e s b", win: "ctrl-s-l r e s b"},
     'lively.ide.browseFiles': 'Alt-t',
     'lively.ide.findFile': {mac: ['Control-X F', 'Control-X Control-F'], win: ['Control-X F', 'Control-X Control-F']},
+    'lively.ide.openDirViewer': 'Control-X D',
     'lively.ide.SystemCodeBrowser.browseModuleStructure': {mac: "m-s-t", win: 'm-s-t'},
     'lively.ide.commands.keys.reset': 'F8',
     'lively.ide.tools.SelectionNarrowing.activateLastActive': "cmd-shift-y",

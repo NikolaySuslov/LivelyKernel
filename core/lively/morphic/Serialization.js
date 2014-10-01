@@ -1,54 +1,8 @@
-module('lively.morphic.Serialization').requires('lively.Network', 'lively.persistence.Serializer', 'lively.morphic.Core', 'lively.morphic.TextCore', 'lively.DOMAbstraction', 'lively.morphic.Widgets').toRun(function() {
-
-// All objects that have an eval'ble toString representation
-Trait('lively.morphic.Serialization.ToStringIsSerializerExpressionTrait',
-'serialization', {
-    serializeExpr: function() { return this.toString() }
-})
-.applyTo(lively.Point)
-.applyTo(lively.Rectangle);
-
-Color.addMethods(
-'serialization', {
-    serializeExpr: function() { return 'Color.' + this.toString(); }
-});
-
-Date.addMethods(
-'serialization', {
-    serializeExpr: function() { return 'new Date(' + Strings.print(this.toString()) + ')'; }
-});
-
-URL.addMethods(
-'serialization', {
-    serializeExpr: function() { return 'URL.create("' + this.toString() + '")'; }
-});
-
-lively.morphic.RadialGradient.addMethods(
-'serialization', {
-    serializeExpr: function() {
-        return Strings.format('lively.morphic.Gradient.create(%s)',
-            Objects.inspect({type: 'radial', stops: this.stops, focus: this.focus}));
-    }
-});
-lively.morphic.LinearGradient.addMethods(
-'serialization', {
-    serializeExpr: function() {
-        return Strings.format('lively.morphic.Gradient.create(%s)',
-            Objects.inspect({type: 'linear', stops: this.stops, vector: this.vector}));
-    }
-});
+module('lively.morphic.Serialization').requires('lively.Network', 'lively.persistence.Serializer', 'lively.morphic.Core', 'lively.morphic.TextCore', 'lively.DOMAbstraction').toRun(function() {
 
 lively.morphic.Shapes.Shape.addMethods(
 'copying', {
     doNotSerialize: ['_renderContext']
-});
-
-lively.morphic.EventHandler.addMethods(
-'serialization', {
-    doNotSerialize: ['dispatchTable'],
-    onrestore: function() {
-        this.dispatchTable = {}
-    }
 });
 
 lively.morphic.Morph.addMethods(
@@ -172,43 +126,6 @@ Object.extend(lively.morphic.Morph, {
         morph.setPartsBinMetaInfo(metaInfo);
         return morph;
     }
-});
-
-lively.morphic.Text.addMethods(
-'serialization', {
-    doNotSerialize: ['charsTyped'],
-    onstore: function($super) {
-        $super();
-        this.fixChunks();
-        // is really the whole text stored?
-        var chunks = this.getTextChunks(),
-            chunkText = chunks.pluck('textString').join('');
-        if (chunkText != this.textString) {
-            console.warn('Text bug: text of text chunks != text in morph');
-            this.cachedTextString = this.textString; // use old method
-        } else {
-            delete this.cachedTextString;
-        }
-        this.getTextChunks().invoke('cacheContent');
-    },
-    onrestore: function($super) {
-        $super();
-        this.charsTyped = '';
-        var chunks = this.getTextChunks();
-        chunks.forEach(function(ea) {
-            if (ea.storedString) ea.textString = ea.storedString;
-        });
-    },
-    prepareForNewRenderContext: function($super,renderCtx) {
-        $super(renderCtx);
-        // FIXME cachedTextString is used for compatiblity before rich text was implemented
-        if (this.cachedTextString) {
-            this.renderContextDispatch('updateText', this.cachedTextString);
-        } else {
-            this.getTextChunks().forEach(function(ea) { ea.restoreFromCacheContent(); });
-        }
-    }
-
 });
 
 lively.morphic.World.addMethods(
@@ -344,7 +261,7 @@ lively.morphic.World.addMethods(
         }.bind(this))
     },
     storeDoc: function (doc, url, checkForOverwrites) {
-        var webR = new WebResource(url).beAsync();
+        var webR = new WebResource(url).noProxy().beAsync();
         webR.createProgressBar('Saving...');
         lively.bindings.connect(webR, 'status', this, 'handleSaveStatus', {updater: function($upd, status) {
             $upd(status, this.sourceObj); // pass in WebResource as well
@@ -373,6 +290,11 @@ lively.morphic.World.addMethods(
             this.savedWorldAsURL =  status.url;
             lively.bindings.signal(this, 'savingDone', status.url);
             Config.get('showWorldSave') && this.alertOK('World successfully saved');
+        } else if (status.isForbidden()) {
+            this.createStatusMessage('Saving to:\n' + status.url + '\nis not allowed!', {
+                openAt: 'center', fill: Color.red, extent: pt(400, 75)
+                // removeAfter: 5000, textStyle: { align: 'center' }
+            });
         } else {
             Config.get('showWorldSave') && this.alert('Problem saving ' + status.url + ': ' + status);
         }
@@ -448,12 +370,27 @@ Object.extend(lively.morphic.World, {
             return this.getIFrame().src = this.url = url;
         });
 
+        morph.addScript(function attachSystemConsole() {
+            var c = this.get("SystemConsole");
+            if (!c) return;
+            c.targetMorph.reset();
+            var iframeGlobal = this.getGlobal();
+            c.targetMorph.install(iframeGlobal.console, iframeGlobal);
+            c.targetMorph.installConsoleWrapper(iframeGlobal.console);
+        });
+
         morph.addScript(function makeEditorEvalInIframe(editor) {
             editor.iframe = this;
             editor.addScript(function boundEval(__evalStatement) {
-                var ctx = this.getDoitContext() || this,
-                    __evalStatement = lively.ast.transform.returnLastStatement(__evalStatement),
-                    interactiveEval = new Function(__evalStatement);
+                var ctx = this.getDoitContext() || this;
+                var vm = lively.lang.VM;
+                __evalStatement = vm.evalCodeTransform(__evalStatement, {
+                  context: ctx,
+                  topLevelVarRecorder: Global,
+                  varRecorderName: "window"
+                })
+                __evalStatement = lively.ast.transform.returnLastStatement(__evalStatement);
+                var interactiveEval = new Function(__evalStatement);
                 return this.iframe.run(interactiveEval);
             });
             editor.addScript(function getDoitContext() { return this.iframe.getGlobal(); });
@@ -466,6 +403,10 @@ Object.extend(lively.morphic.World, {
                 ['Open workspace', function() {
                     var workspace = $world.addCodeEditor({title: String(target.url)});
                     target.makeEditorEvalInIframe(workspace);
+                }],
+                ['Open console', function() {
+                  lively.require("lively.ide.tools.SystemConsole")
+                  lively.ide.tools.SystemConsole.openInContext(target.getGlobal());
                 }],
                 ['Edit page', function() {
                     module('lively.ide.tools.TextEditor').load(true);
@@ -503,6 +444,19 @@ Object.extend(lively.morphic.World, {
             return this.getGlobal().eval('(' + func + ')();');
         });
 
+        morph.addScript(function onLoad(func) {
+            var self = this;
+            this.getIFrame().onload = function(evt) {
+                self.onIFrameLoad.call(self, evt);
+            };
+        });
+
+        morph.addScript(function onIFrameLoad(func) {
+            this.attachSystemConsole();
+        });
+
+        morph.onLoad();
+
         return morph;
     },
 
@@ -521,9 +475,105 @@ lively.morphic.Script.addMethods(
     },
 });
 
-lively.morphic.HandMorph.addMethods(
-'serialization', {
-    doNotSerialize: ['internalClickedOnMorph']
-});
+(function setupEventsSerializationAdditions() {
+    module("lively.morphic.Events").runWhenLoaded(function() {
+        lively.morphic.EventHandler.addMethods(
+        'serialization', {
+            doNotSerialize: ['dispatchTable'],
+            onrestore: function() {
+                this.dispatchTable = {}
+            }
+        });
+
+        lively.morphic.HandMorph.addMethods(
+        'serialization', {
+            doNotSerialize: ['internalClickedOnMorph']
+        });
+    });
+})();
+
+(function setupGraphicsSerializationAdditions() {
+    module("lively.morphic.Graphics").runWhenLoaded(function() {
+        // All objects that have an eval'ble toString representation
+        Trait('lively.morphic.Serialization.ToStringIsSerializerExpressionTrait',
+        'serialization', {
+            serializeExpr: function() { return this.toString() }
+        })
+        .applyTo(lively.Point)
+        .applyTo(lively.Rectangle);
+        
+        Color.addMethods(
+        'serialization', {
+            serializeExpr: function() { return 'Color.' + this.toString(); }
+        });
+        
+        Date.addMethods(
+        'serialization', {
+            serializeExpr: function() { return 'new Date(' + Strings.print(this.toString()) + ')'; }
+        });
+        
+        URL.addMethods(
+        'serialization', {
+            serializeExpr: function() { return 'URL.create("' + this.toString() + '")'; }
+        });
+        
+        lively.morphic.RadialGradient.addMethods(
+        'serialization', {
+            serializeExpr: function() {
+                return Strings.format('lively.morphic.Gradient.create(%s)',
+                    Objects.inspect({type: 'radial', stops: this.stops, focus: this.focus}));
+            }
+        });
+        lively.morphic.LinearGradient.addMethods(
+        'serialization', {
+            serializeExpr: function() {
+                return Strings.format('lively.morphic.Gradient.create(%s)',
+                    Objects.inspect({type: 'linear', stops: this.stops, vector: this.vector}));
+            }
+        });
+    });
+})();
+
+(function setupTextSerializationAdditions() {
+    module("lively.morphic.TextCore").runWhenLoaded(function() {
+
+        lively.morphic.Text.addMethods(
+        'serialization', {
+            doNotSerialize: ['charsTyped'],
+            onstore: function($super) {
+                $super();
+                this.fixChunks();
+                // is really the whole text stored?
+                var chunks = this.getTextChunks(),
+                    chunkText = chunks.pluck('textString').join('');
+                if (chunkText != this.textString) {
+                    console.warn('Text bug: text of text chunks != text in morph');
+                    this.cachedTextString = this.textString; // use old method
+                } else {
+                    delete this.cachedTextString;
+                }
+                this.getTextChunks().invoke('cacheContent');
+            },
+            onrestore: function($super) {
+                $super();
+                this.charsTyped = '';
+                var chunks = this.getTextChunks();
+                chunks.forEach(function(ea) {
+                    if (ea.storedString) ea.textString = ea.storedString;
+                });
+            },
+            prepareForNewRenderContext: function($super,renderCtx) {
+                $super(renderCtx);
+                // FIXME cachedTextString is used for compatiblity before rich text was implemented
+                if (this.cachedTextString) {
+                    this.renderContextDispatch('updateText', this.cachedTextString);
+                } else {
+                    this.getTextChunks().forEach(function(ea) { ea.restoreFromCacheContent(); });
+                }
+            }
+        
+        });
+    });
+})();
 
 }) // end of module

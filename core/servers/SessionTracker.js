@@ -86,6 +86,7 @@ var sessionActions = {
         });
 
         connection.id = msg.data.id;
+
         connection.on('close', function() {
             // remove the session registration after the connection closes
             // give it some time because the connection might be just flaky and
@@ -273,6 +274,18 @@ var sessionActions = {
             sessionServer.routeMessage(msg, connection);
         }
     },
+
+    remoteEvalRequest: function(sessionServer, connection, msg) {
+        try {
+            var result = eval(msg.data.expr);
+        } catch (e) { result = String(e); }
+        console.log("remote eval result ", result);
+        connection.send({
+            action: msg.action + 'Result',
+            inResponseTo: msg.messageId,
+            data: {result: result}
+        });
+    }
 }
 
 var services = require("./LivelyServices").services;
@@ -404,11 +417,12 @@ function SessionTracker(options) {
         function answer(response) {
             log(3, '%s got answer from routed message %s: ', tracker, msg.messageId, response);
             connection.send({
-                action: msg.action + 'Result',
-                inResponseTo: msg.messageId,
-                data: response.data,
-                target: msg.sender,
-                messageId: response.messageId
+                action:              msg.action + 'Result',
+                inResponseTo:        msg.messageId,
+                data:                response.data,
+                target:              msg.sender,
+                messageId:           response.messageId,
+                expectMoreResponses: response.expectMoreResponses
             });
         }
         var tracker = this, target = msg.target || msg.data.target;
@@ -416,14 +430,14 @@ function SessionTracker(options) {
         this.findConnection(target, function(err, targetConnection) {
             if (err || !targetConnection) {
                 console.warn('%s failed to route message: Failure finding target connection: ', tracker, err);
-                answer({data: {error: 'Failure finding target connection: ' + err, target: target}})
-                return; }
+                return answer({data: {error: 'Failure finding target connection: ' + err, target: target}});
+            }
             targetConnection.send({
-                action: msg.action,
-                data: msg.data,
-                sender: msg.sender,
-                target: target,
-                messageId: msg.messageId
+                action:    msg.action,
+                data:      msg.data,
+                sender:    msg.sender,
+                target:    target,
+                messageId: msg.messageId,
             }, answer);
         });
     }
@@ -833,31 +847,27 @@ SessionTracker.default = function() { return global.tracker; }
 
 // -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 // user data experiment
+function getLivelySessionData(req) {
+    var cookieField = 'lvUserData_2013-10-12';
+    return req.session ? req.session[cookieField] || (req.session[cookieField] = {}) : {};
+}
+
 lively.userData = (function setupUserDataExpt() {
     // first approach to a login/user system. does not really belong here!
-    var cookieField = 'lvUserData_2013-10-12';
-
-    function getStoredUserData(sess) {
-        return sess ? sess[cookieField] || (sess[cookieField] = {}) : null;
-    }
-
     var userData = {};
-    userData.getUserDataFromRequest = function(request) {
-        return request.session && getStoredUserData(request.session);
-    }
     userData.getUserName = function(request) {
-        var stored = this.getUserDataFromRequest(request);
+        var stored = getLivelySessionData(request);
         return stored && stored.username;
     }
     userData.getGroupName = function(request) {
-        var stored = this.getUserDataFromRequest(request);
+        var stored = getLivelySessionData(request);;
         return stored && stored.group;
     }
 
     userData.registerHTTPHandlers = function(app, server) {
         app.post('/login', function(req, res) {
             var data = req.body || {},
-                stored = userData.getUserDataFromRequest(req);
+                stored = getLivelySessionData(req);;
 
             if (!data) { res.status(400).end('no data'); return; }
             if (!stored) { res.status(400).end('cannot access stored data'); return; }
@@ -874,8 +884,7 @@ lively.userData = (function setupUserDataExpt() {
             res.json(stored).end();
         });
         app.get('/login', function(req, res) {
-            var stored = getStoredUserData(req.session);
-            res.json(stored).end();
+            res.json(getLivelySessionData(req)).end();
         });
     };
 

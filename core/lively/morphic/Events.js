@@ -935,8 +935,8 @@ handleOnCapture);
         // delayed so that the event onMouseUp event handlers that
         // are invoked after this point still have access
         (function removeClickedOnMorph() {
-            if (evt.world.clickedOnMoprh == evt.hand.clickedOnMorph) {
-                evt.world.clickedOnMoprh = null
+            if (evt.world.clickedOnMorph == evt.hand.clickedOnMorph) {
+                evt.world.clickedOnMorph = null
             }
             evt.hand.clickedOnMorph = null;
             evt.hand.eventStartPos = null;
@@ -1231,25 +1231,26 @@ handleOnCapture);
     },
 
     dropOn: function(aMorph) {
-        var placeholderPosition;
-        if (this.placeholder) {
-            placeholderPosition = this.placeholder.getPosition();
-        }
-        
+        var placeholder = this.placeHolder;
         var layouter = aMorph.getLayouter();
-        if (layouter) {
-            layouter.removeAllPlaceholders();
+
+        if (placeholder) {
+            var placeHolderPos = placeholder.getPosition();
+            this.noLayoutDuring(function() {
+                if (layouter) layouter.removeAllPlaceholders();
+                aMorph.addMorph(this);
+                this.onDropOn(aMorph);
+                this.setPosition(placeHolderPos.subPt(this.getOrigin()));
+            });
+        } else {
+            if (layouter) layouter.removeAllPlaceholders();
+            aMorph.addMorph(this);
+            this.onDropOn(aMorph);
         }
-        
-        aMorph.addMorph(this);
-        this.onDropOn(aMorph);
         delete this.previousOwner;
         delete this.previousPosition;
-        if (placeholderPosition) {
-            delete(this.placeholder);
-            this.setPosition(placeholderPosition.subPt(this.getOrigin())); //.subPt(pt(1,1)));
-            aMorph.applyLayout();
-        }
+        delete this.placeholder;
+        aMorph.applyLayout();
     },
 
     onDropOn: function(aMorph) {
@@ -1910,11 +1911,8 @@ lively.morphic.Morph.subclass('lively.morphic.HandMorph',
         for (var i = 0; i < submorphs.length; i++) {
             var submorph = submorphs[i],
                 submorphPos = submorph.getPosition();
-            if (submorph.isGrabShadow) {
-                submorph.remove();
-            } else {
-                submorph.dropOn(morph);
-            }
+            if (submorph.isGrabShadow) submorph.remove();
+            else submorph.dropOn(morph);
         };
         evt && evt.stop();
         return true;

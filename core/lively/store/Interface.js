@@ -90,14 +90,14 @@ Object.subclass("lively.store.ObjectRepository",
 "initializing", {
 
     initialize: function(url) {
-        this.repoURL;
+        this.repoURL = url ? url.withPath("/") : URL.root;
     }
 
 },
 "accessing", {
 
     getServerInterfaceURL: function() {
-        return URL.nodejsBase.withFilename("ObjectRepositoryServer/");
+        return this.repoURL.withPath(URL.nodejsBase.fullPath() + "ObjectRepositoryServer/");
     }
 
 },
@@ -105,7 +105,9 @@ Object.subclass("lively.store.ObjectRepository",
 
     getRecords: function(querySpec, thenDo)  {
         // new lively.store.ObjectRepository().getRecords()
-        var res = this.getServerInterfaceURL().withQuery({getRecords: encodeURIComponent(JSON.stringify(querySpec))}).asWebResource();
+        var res = this.getServerInterfaceURL()
+            .withQuery({getRecords: encodeURIComponent(JSON.stringify(querySpec))})
+            .asWebResource().noProxy();
         if (thenDo != null) {
             res.withJSONWhenDone(function(json, status) {
                 thenDo(status.isSuccess() ? null : status, json); }).beAsync().get();
@@ -118,16 +120,6 @@ Object.subclass("lively.store.ObjectRepository",
             try { json = JSON.parse(content); } catch(e) { json = {error: e} }
             return json;
         }
-    },
-
-    getASTRegistryIndex: function(idx) {
-        var res = this.getServerInterfaceURL().withQuery({getASTRegistryIndex: idx}).asWebResource(),
-            content = res.beSync().get().content;
-        if (!res.status.isSuccess())
-            throw new Error(content);
-        var json;
-        try { json = JSON.parse(content); } catch(e) { json = {error: e} }
-        return json;
     },
 
     diff: function(querySpecA, querySpecB, options, thenDo)  {

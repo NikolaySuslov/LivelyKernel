@@ -2,7 +2,7 @@ module('lively.ide.tools.DirViewer').requires('lively.persistence.BuildSpec').to
 
 lively.BuildSpec('lively.ide.tools.DirViewer', {
     _BorderColor: Color.rgb(204,0,0),
-    _Extent: lively.pt(498.8,476.0),
+    _Extent: lively.pt(500,476.0),
     className: "lively.morphic.Window",
     contentOffset: lively.pt(3.0,22.0),
     draggingEnabled: true,
@@ -11,7 +11,7 @@ lively.BuildSpec('lively.ide.tools.DirViewer', {
     name: "DirViewer",
     submorphs: [{
         _BorderColor: Color.rgb(95,94,95),
-        _Extent: lively.pt(492.8,451.0),
+        _Extent: lively.pt(495,451.0),
         _Fill: Color.rgb(245,245,245),
         _Position: lively.pt(3.0,22.0),
         _StyleSheet: ".list-item {\n\
@@ -123,7 +123,7 @@ lively.BuildSpec('lively.ide.tools.DirViewer', {
                 this.clearOnInput && this.clear();
             },
             connectionRebuilder: function connectionRebuilder() {
-            lively.bindings.connect(this, "textString", this, "inputChanged", {converter: 
+            lively.bindings.connect(this, "textString", this, "inputChanged", {converter:
         function (string) { return this.sourceObj.getInput(); }});
             lively.bindings.connect(this, "input", this.get("DirViewer"), "goto", {});
         },
@@ -170,12 +170,12 @@ lively.BuildSpec('lively.ide.tools.DirViewer', {
                     }
                     return column;
                 }
-        
+
                 ed.selection.moveCursorTo = ed.selection.moveCursorTo.wrap(function(proceed, row, column, keepDesiredColumn) {
                     column = offsetColumnForLabel(this.session, row, column);
                     return proceed(row, column, keepDesiredColumn);
                 });
-        
+
                 ed.selection.setSelectionAnchor = ed.selection.setSelectionAnchor.wrap(function(proceed,row, column) {
                     column = offsetColumnForLabel(this.session, row,column);
                     return proceed(row, column);
@@ -202,7 +202,7 @@ lively.BuildSpec('lively.ide.tools.DirViewer', {
                     case 'Alt-H': this.browseHistory(); evt.stop(); return true;
                     case 'Esc':
                     case 'Control-G': this.clear(); evt.stop(); return true;
-                    default: return $super(evt);        
+                    default: return $super(evt);
                 }
             },
             onLoad: function onLoad() {
@@ -317,17 +317,7 @@ lively.BuildSpec('lively.ide.tools.DirViewer', {
             },
             name: "fileList",
             sourceModule: "lively.morphic.Lists",
-            submorphs: [{
-                _BorderColor: Color.rgb(204,0,0),
-                _Extent: lively.pt(462.0,5286.0),
-                className: "lively.morphic.Box",
-                doNotSerialize: ["_renderContext","halos","_isRendered","priorExtent","cachedBounds"],
-                droppingEnabled: true,
-                layout: {
-                    adjustForNewBounds: true,
-                    resizeWidth: true
-                }
-            }],
+            submorphs: [],
             connectionRebuilder: function connectionRebuilder() {
             lively.bindings.connect(this, "listItemDoubleClicked", this.get("DirViewer"), "listItemDoubleClicked", {});
         },
@@ -355,7 +345,7 @@ lively.BuildSpec('lively.ide.tools.DirViewer', {
                         text.setHandStyle("default");
         // var cssClasses = ["Morph","Text","list-item"];
         // text.setStyleClassNames(cssClasses);
-        
+
                     });
                     itemMorphs = itemMorphs.slice(0,requiredLength);
                 });
@@ -487,7 +477,7 @@ lively.BuildSpec('lively.ide.tools.DirViewer', {
                 this.clearOnInput && this.clear();
             },
             connectionRebuilder: function connectionRebuilder() {
-            lively.bindings.connect(this, "textString", this, "inputChanged", {converter: 
+            lively.bindings.connect(this, "textString", this, "inputChanged", {converter:
         function (string) { return this.sourceObj.getInput(); }});
             lively.bindings.connect(this, "textChange", this.get("DirViewer"), "applyFilter", {});
         },
@@ -534,12 +524,12 @@ lively.BuildSpec('lively.ide.tools.DirViewer', {
                     }
                     return column;
                 }
-        
+
                 ed.selection.moveCursorTo = ed.selection.moveCursorTo.wrap(function(proceed, row, column, keepDesiredColumn) {
                     column = offsetColumnForLabel(this.session, row, column);
                     return proceed(row, column, keepDesiredColumn);
                 });
-        
+
                 ed.selection.setSelectionAnchor = ed.selection.setSelectionAnchor.wrap(function(proceed,row, column) {
                     column = offsetColumnForLabel(this.session, row,column);
                     return proceed(row, column);
@@ -566,7 +556,7 @@ lively.BuildSpec('lively.ide.tools.DirViewer', {
                     case 'Alt-H': this.browseHistory(); evt.stop(); return true;
                     case 'Esc':
                     case 'Control-G': this.clear(); evt.stop(); return true;
-                    default: return $super(evt);        
+                    default: return $super(evt);
                 }
             },
             onLoad: function onLoad() {
@@ -636,6 +626,49 @@ lively.BuildSpec('lively.ide.tools.DirViewer', {
         connectionRebuilder: function connectionRebuilder() {
         lively.bindings.connect(this, "lastFocused", this, "focusChanged", {});
     },
+        createDirInteractively: function createDirInteractively() {
+        var base = this.dirState.path,
+            self = this;
+        Functions.composeAsync(
+            function(next) {
+                $world.prompt("Create directory: Enter a name", function(input) {
+                    next(!input ? new Error("no input") : null, input); });
+            },
+            function(dirName, next) {
+                var path = base + (base.endsWith("/") ? "" : "/") + dirName;
+                lively.shell.run("mkdir -p " + path, {}, function(cmd) {
+                    next(null, dirName); });
+            },
+            function(dirName, next) {
+                self.fetchAndDisplayDirContent();
+                lively.bindings.connect(
+                    self, 'dirContentUpdated',
+                    {next: function() { next(null, dirName); }}, 'next');
+            },
+            function(dirName, next) {
+                var firstPart = dirName.split('/').first();
+                self.get("fileList").setSelectionMatching(firstPart);
+            })(function(err) {
+                if (err) show("Error creating directory: " + err);
+                else Global.alertOK("Directory created");
+            });
+    },
+
+        deleteSelectedFileInteractively: function deleteSelectedFileInteractively() {
+        var sel = this.get("fileList").selection;
+        if (!sel) { show("nothing selected"); return; }
+
+        var base = this.dirState.path,
+            self = this;
+        var path = base + (base.endsWith("/") ? "" : "/") + sel.fileName;
+
+        $world.confirm("Really delete " + path + "?", function(input) {
+            if (!input) return;
+            lively.shell.run("rm -rf " + sel.fileName, {cwd: base}, function(cmd) {
+                self.fetchAndDisplayDirContent(); });
+        });
+    },
+
         doActionForFileItem: function doActionForFileItem(fileItem) {
         var j = lively.ide.FileSystem.joinPaths;
         var fullPath = j(this.dirState.path, fileItem.path);
@@ -645,7 +678,7 @@ lively.BuildSpec('lively.ide.tools.DirViewer', {
             lively.ide.openFile(fullPath)
         }
     },
-        fetchAndDisplayDirContent: function fetchAndDisplayDirContent() {
+        fetchAndDisplayDirContent: function fetchAndDisplayDirContent(thenDo) {
         // this.fetchAndDisplayDirContent();
         var self = this;
         this.get('filter').textString = ''
@@ -668,6 +701,7 @@ lively.BuildSpec('lively.ide.tools.DirViewer', {
             function(files) {
                 self.dirState.files = [parentDir].concat(files);
                 self.renderDebounced();
+                thenDo && thenDo();
             });
     },
         focusChanged: function focusChanged(newFocus) {
@@ -747,12 +781,26 @@ lively.BuildSpec('lively.ide.tools.DirViewer', {
         return items.map(function(ea) {
             return {
                 isListItem: true,
-                string: ea.path || ea.fileName,
+                string: stringify(ea),
                 value: ea,
                 cssClasses: [ea.isDirectory ? 'directory' : 'file']
             }
         });
+
+        function stringify(item) {
+            var size = Global.Numbers.humanReadableByteSize(item.size);
+            return Strings.format("%s %s %s",
+                pad(printDate(item.lastModified), 20),
+                pad(size, 9),
+                item.path || item.fileName);
+        }
+
+        function pad(string, entireLength) { return Strings.pad(string, entireLength-string.length, true); }
+
+        function printDate(d) { return d && d.format ? d.format("yyyy-mm-dd HH:MM:ss") : "no date"; }
+
     },
+
         itemsSort: function itemsSort(sortKey, items) {
         return items.sortBy(function(item) {
             if (sortKey === 'name') {
@@ -798,12 +846,6 @@ lively.BuildSpec('lively.ide.tools.DirViewer', {
         keys            = evt.getKeyString(),
         wasHandled      = true;
 
-    function ensureSelectionIsInView(topOrBottom) {
-        var visible = fl.getVisibleIndexes();
-        // if (visible.include(fl.selectedLineNo)) return;
-        var newIdx = topOrBottom === 'top' ? visible.first() : visible.last()-1;
-        fl.selectAt(newIdx);
-    }
     switch (keys) {
         case 'Enter':
             var sel = fl.getSelection();
@@ -813,12 +855,14 @@ lively.BuildSpec('lively.ide.tools.DirViewer', {
                 wasHandled = false;
             break;
         case 'Shift-^': this.gotoParentDir(); break;
+        case 'Shift-D': if (fileListFocused) this.deleteSelectedFileInteractively(); break;
         case 'Control-N': case 'Down': fl.selectNext(); break;
         case 'Control-P': case 'Up': fl.selectPrev(); break;
         case "Alt-V": case "PageUp": fl.scrollPage('up'); ensureSelectionIsInView('top'); break;
         case "Control-V": case "PageDown": fl.scrollPage('down'); ensureSelectionIsInView('bottom'); break;
         case "Alt-Shift->": case "End": fl.scrollToBottom(); ensureSelectionIsInView('bottom'); break;
         case "Alt-Shift-<": case "Home": fl.scrollToTop(); ensureSelectionIsInView('top'); break;
+        case "Command-Shift-+": case "Control-Shift-+": this.createDirInteractively(); break;
         case 'F1': dirInput.focus(); break;
         case 'F2': fl.focus(); break;
         case 'F3': filter.focus(); break;
@@ -844,6 +888,14 @@ lively.BuildSpec('lively.ide.tools.DirViewer', {
         return dirInputFocused || filterFocused ? false : $super(evt);
     } else {
         evt.stop(); return true;
+    }
+
+    // -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+    function ensureSelectionIsInView(topOrBottom) {
+        var visible = fl.getVisibleIndexes();
+        // if (visible.include(fl.selectedLineNo)) return;
+        var newIdx = topOrBottom === 'top' ? visible.first() : visible.last()-1;
+        fl.selectAt(newIdx);
     }
 },
         onWindowGetsFocus: function onWindowGetsFocus() {
@@ -907,7 +959,10 @@ lively.BuildSpec('lively.ide.tools.DirViewer', {
         this.get('targetDir').textString = ''
         this.get('fileList').listItemContainer.removeAllMorphs();
         this.getWindow().setTitle('DirViewer');
-    }
+    },
+        onFromBuildSpecCreated: function onFromBuildSpecCreated() {
+            this.dirState = Object.extend({}, this.dirState);
+        }
     }],
     titleBar: "DirViewer"
 });

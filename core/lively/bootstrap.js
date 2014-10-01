@@ -125,6 +125,10 @@
             return (typeof process !== 'undefined') && !!process.versions.node;
         };
 
+	that.isIE = function() {
+            return navigator.userAgent.match(/(MSIE|Trident)/);
+        };
+
         that.isSpecSatisfied = function() {
             var matchingSpec = this.browserSpec(),
                 specVersion,
@@ -340,25 +344,23 @@
             var el = document.createElement('div'),
                 text1 = document.createTextNode('An error occurred. '
                                                + 'If the world does not load '
-                                               + 'check '),
-                text2 = document.createTextNode(' for help.'),
+                                               + 'you can '),
                 link = document.createElement('a')
             el.setAttribute('id', this.brokenWorldMsgId);
-            el.setAttribute('style', "position: fixed;"
-                                   + "margin-left:auto; margin-right:auto;"
-                                   + "padding: 5px;"
+            el.setAttribute('style', "position: fixed; padding: 5px;"
                                    + "background-color: white;"
-                                   + "font-family: Arial,times;"
-                                   + "color: red;"
+                                   + "font-family: Arial,times; color: red;"
                                    + "font-size: large-x;")
             el.style.top = (this.height() / 2 - 70) + 'px';
-            el.style.left = (this.width() / 2 - 290) + 'px';
+            el.style.left = (this.width() / 2 - 250) + 'px';
             link.style.color = 'red';
-            link.setAttribute('href', 'javascript:window.open(lively.moduleDependencyViz());');
-            link.textContent = 'which modules did not load';
+            link.setAttribute('href', '/world-versions.html?world-path=' + encodeURIComponent(document.location.pathname.replace(/^\//, '')));
+            link.setAttribute('target', '_blank');
+            link.textContent = 'revert ' + (document.location.pathname.match(/[^\/]+$/)) + ' by clicking here';
+            link.style.fontWeight = 'bold';
             el.appendChild(text1);
+            el.appendChild(document.createElement('br'));
             el.appendChild(link);
-            el.appendChild(text2);
             return el;
         },
 
@@ -590,11 +592,11 @@
             },
 
         loadViaXHR: function(beSync, url, onLoadCb) {
-            this.getViaXHR(beSync, url, function(err, content) {
+            this.getViaXHR(beSync, url, function(err, content, headers) {
                 if (err) {
                     console.warn('cannot load %s: %s', url, err);
                 } else {
-                    JSLoader.evalJavaScriptFromURL(url, content, onLoadCb);
+                    JSLoader.evalJavaScriptFromURL(url, content, onLoadCb, headers);
                 }
             });
             return null;
@@ -869,9 +871,22 @@
             xhr.open("GET", url, !beSync);
             xhr.onload = function() {
                 if (xhr.readyState !== 4) return;
+                // FIXME: copied from NetRequest
+                var headerString = xhr.getAllResponseHeaders(),
+                    headerObj = {};
+                    headerString.split('\r\n').forEach(function(ea) {
+                        var splitter = ea.indexOf(':');
+                        if (splitter != -1) {
+                            headerObj[ea.slice(0, splitter)] = ea.slice(splitter + 1).trim();
+                            // as headers should be case-insensitiv, add lower case headers (for Safari)
+                            headerObj[ea.slice(0, splitter).toLowerCase()] = ea.slice(splitter + 1).trim();
+                        }
+                    });
                 callback(
                     xhr.status >= 400 ? xhr.statusText : null,
-                    xhr.responseText)
+                    xhr.responseText,
+                    headerObj
+                );
             };
             xhr.onerror = function(e) {
                 callback(xhr.statusText, null);
@@ -1034,7 +1049,7 @@
                 urlOption = Global.JSLoader.getOption('quickLoad'),
                 useRewritten = !!JSLoader.getOption('loadRewrittenCode'),
                 runCodeOption = Global.JSLoader.getOption('runCode'),
-                optimizedLoading = (urlOption === null ? true : urlOption) && !timemachineActive && !useRewritten,
+                optimizedLoading = (urlOption === null ? true : urlOption) && !timemachineActive && !useRewritten && !browserDetector.isIE(),
                 combinedModulesHash;
 
             if (runCodeOption) {

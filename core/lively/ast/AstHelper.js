@@ -438,6 +438,36 @@ Object.subclass("lively.ast.MozillaAST.BaseVisitor",
         return retVal;
     },
 
+    visitArrowFunctionExpression: function(node, depth, state, path) {
+        var retVal;
+        node.params.forEach(function(ea, i) {
+            // ea is of type Pattern
+            retVal = this.accept(ea, depth, state, path.concat(["params", i]));
+        }, this);
+
+        if (node.defaults) {
+            node.defaults.forEach(function(ea, i) {
+                // ea is of type Expression
+                retVal = this.accept(ea, depth, state, path.concat(["defaults", i]));
+            }, this);
+        }
+
+        if (node.rest) {
+            // rest is a node of type Identifier
+            retVal = this.accept(node.rest, depth, state, path.concat(["rest"]));
+        }
+
+        // body is a node of type BlockStatement
+        retVal = this.accept(node.body, depth, state, path.concat(["body"]));
+
+        // node.generator has a specific type that is boolean
+        if (node.generator) {/*do stuff*/}
+
+        // node.expression has a specific type that is boolean
+        if (node.expression) {/*do stuff*/}
+        return retVal;
+    },
+
     visitSequenceExpression: function(node, depth, state, path) {
         var retVal;
         node.expressions.forEach(function(ea, i) {
@@ -702,6 +732,48 @@ Object.subclass("lively.ast.MozillaAST.BaseVisitor",
             // node.value has a specific type that is string or boolean or number or RegExp
         }
         return retVal;
+    },
+
+    visitClassDeclaration: function(node, depth, state, path) {
+        var retVal;
+        // id is a node of type Identifier
+        retVal = this.accept(node.id, depth, state, path.concat(["id"]));
+
+        if (node.superClass) {
+            // superClass is a node of type Identifier
+            retVal = this.accept(node.superClass, depth, state, path.concat(["superClass"]));
+        }
+
+        // body is a node of type ClassBody
+        retVal = this.accept(node.body, depth, state, path.concat(["body"]));
+        return retVal;
+    },
+
+    visitClassBody: function(node, depth, state, path) {
+        var retVal;
+        node.body.forEach(function(ea, i) {
+            // ea is of type MethodDefinition
+            retVal = this.accept(ea, depth, state, path.concat(["body", i]));
+        }, this);
+        return retVal;
+    },
+
+    visitMethodDefinition: function(node, depth, state, path) {
+        var retVal;
+        // node.static has a specific type that is boolean
+        if (node.static) {/*do stuff*/}
+
+        // node.computed has a specific type that is boolean
+        if (node.computed) {/*do stuff*/}
+
+        // node.kind is ""
+
+        // key is a node of type Identifier
+        retVal = this.accept(node.key, depth, state, path.concat(["key"]));
+
+        // value is a node of type FunctionExpression
+        retVal = this.accept(node.value, depth, state, path.concat(["value"]));
+        return retVal;
     }
 });
 
@@ -865,13 +937,36 @@ lively.ast.MozillaAST.BaseVisitor.subclass("lively.ast.ComparisonVisitor",
     visitLiteral: function($super, node1, node2, state, path) {
         this.compareField("value", node1, node2, state);
         $super(node1, node2, state, path);
+    },
+
+    visitClassDeclaration: function($super, node1, node2, state, path) {
+        this.compareField("id", node1, node2, state);
+        if (node1.superClass) {
+            this.compareField("superClass", node1, node2, state);
+        }
+        this.compareField("body", node1, node2, state);
+        $super(node1, node2, state, path);
+    },
+
+    visitClassBody: function($super, node1, node2, state, path) {
+        this.compareField("body", node1, node2, state);
+        $super(node1, node2, state, path);
+    },
+
+    visitMethodDefinition: function($super, node1, node2, state, path) {
+        this.compareField("static", node1, node2, state);
+        this.compareField("computed", node1, node2, state);
+        this.compareField("kind", node1, node2, state);
+        this.compareField("key", node1, node2, state);
+        this.compareField("value", node1, node2, state);
+        $super(node1, node2, state, path);
     }
 });
 
 lively.ast.MozillaAST.BaseVisitor.subclass("lively.ast.ScopeVisitor",
 'scope specific', {
     newScope: function(scopeNode, parentScope) {
-        var scope = {node: scopeNode, varDecls: [], funcDecls: [], refs: [], params: [], subScopes: []}
+        var scope = {node: scopeNode, varDecls: [], funcDecls: [], classDecls: [], methodDecls: [], refs: [], params: [], subScopes: []}
         if (parentScope) parentScope.subScopes.push(scope);
         return scope;
     }
@@ -881,11 +976,9 @@ lively.ast.MozillaAST.BaseVisitor.subclass("lively.ast.ScopeVisitor",
     accept: function (node, depth, scope, path) {
         path = path || [];
         try {
-        return this['visit' + node.type](node, depth, scope, path);
-
-        } catch (e) {
-            show(e.stack)
-        }
+            if (!this['visit' + node.type]) throw new Error("No AST visit handler for type " + node.type);
+            return this['visit' + node.type](node, depth, scope, path);
+        } catch (e) { show(e.stack) }
     },
 
     visitVariableDeclaration: function ($super, node, depth, scope, path) {
@@ -945,6 +1038,33 @@ lively.ast.MozillaAST.BaseVisitor.subclass("lively.ast.ScopeVisitor",
 
     },
 
+    visitArrowFunctionExpression: function($super, node, depth, scope, path) {
+        var newScope = this.visitFunction(node, depth, scope, path);
+
+        var retVal;
+        if (node.defaults) {
+            node.defaults.forEach(function(ea, i) {
+                // ea is of type Expression
+                retVal = this.accept(ea, depth, newScope, path.concat(["defaults", i]));
+            }, this);
+        }
+
+        if (node.rest) {
+            // rest is a node of type Identifier
+            retVal = this.accept(node.rest, depth, newScope, path.concat(["rest"]));
+        }
+
+        // body is a node of type BlockStatement
+        retVal = this.accept(node.body, depth, newScope, path.concat(["body"]));
+
+        // node.generator has a specific type that is boolean
+        if (node.generator) {/*do stuff*/}
+
+        // node.expression has a specific type that is boolean
+        if (node.expression) {/*do stuff*/}
+        return retVal;
+    },
+
     visitIdentifier: function ($super, node, depth, scope, path) {
         scope.refs.push(node);
         return $super(node, depth, scope, path);
@@ -995,6 +1115,34 @@ lively.ast.MozillaAST.BaseVisitor.subclass("lively.ast.ScopeVisitor",
         var retVal;
         // ignore label
         retVal = this.accept(node.body, depth, state, path.concat(["body"]));
+        return retVal;
+    },
+
+
+    visitClassDeclaration: function(node, depth, scope, path) {
+        scope.classDecls.push(node);
+
+        var retVal;
+        // id is a node of type Identifier
+        // retVal = this.accept(node.id, depth, state, path.concat(["id"]));
+
+        if (node.superClass) {
+            this.accept(node.superClass, depth, scope, path.concat(["superClass"]));
+        }
+
+        // body is a node of type ClassBody
+        retVal = this.accept(node.body, depth, scope, path.concat(["body"]));
+        return retVal;
+    },
+
+    visitMethodDefinition: function(node, depth, scope, path) {
+        var retVal;
+
+        // don't visit key Identifier for now
+        // retVal = this.accept(node.key, depth, scope, path.concat(["key"]));
+
+        // value is a node of type FunctionExpression
+        retVal = this.accept(node.value, depth, scope, path.concat(["value"]));
         return retVal;
     }
 });
@@ -1129,14 +1277,16 @@ Object.extend(lively.ast.acorn, {
         // let source be "var x = 1; x + 1;" and we are looking for the
         // Identifier "x" in "x+1;". The second statement is what will be found.
         if (!ast.astIndex) acorn.walk.addAstIndex(ast);
-        var found, targetReached = false, bodyNode, lastStatement;
+        var found, targetReached = false, bodyNodes, lastStatement;
         lively.ast.acorn.withMozillaAstDo(ast, {}, function(next, node, _) {
             if (targetReached || node.astIndex < target.astIndex) return;
             if (node.type === "Program" || node.type === "BlockStatement") {
-                bodyNode = node;
+                bodyNodes = node.body;
+            } else if (node.type === "SwitchCase") {
+                bodyNodes = node.consequent;
             }
-            if (bodyNode) {
-                var nodeIdxInProgramNode = bodyNode.body.indexOf(node);
+            if (bodyNodes) {
+                var nodeIdxInProgramNode = bodyNodes.indexOf(node);
                 if (nodeIdxInProgramNode > -1) lastStatement = node;
             }
             if (!targetReached && (node === target || node.astIndex === target.astIndex)) {
@@ -1227,8 +1377,8 @@ Object.extend(lively.ast.query, {
             return [scope.node.id && scope.node.id.name]
                 .concat(scope.funcDecls.pluck('id').pluck('name')).compact()
                 .concat(scope.params.pluck('name'))
-                .concat(scope.varDecls.pluck('declarations').flatten()
-                    .pluck('id').pluck('name'))
+                .concat(scope.varDecls.pluck('declarations').flatten().pluck('id').pluck('name'))
+                .concat(scope.classDecls.pluck('id').pluck('name'))
                 .concat(!useComments ? [] :
                     findJsLintGlobalDeclarations(
                         scope.node.type === 'Program' ?
@@ -1541,19 +1691,35 @@ Object.extend(lively.ast.transform, {
         return lively.ast.transform.helper.replaceNodes(targetsAndReplacements, source);
     },
 
-    returnLastStatement: function(source) {
-        // lively.ast.transformReturnLastStatement('foo + 3;\n this.baz(99 * 3) + 4;')
-        // source = that.getTextRange()
-        var ast = lively.ast.acorn.parse(source),
+    returnLastStatement: function(source, opts) {
+        opts = opts || {};
+        var parse = lively.ast.acorn.parse,
+            ast = parse(source, {ecmaVersion: 6}),
             last = ast.body.pop(),
-            newLastsource = 'return ' + source.slice(last.start, last.end),
-            newLast = lively.ast.acorn.fuzzyParse(newLastsource).body.last(),
-            newSource = source.slice(0, last.start) + 'return ' + source.slice(last.start)
+            newLastsource = 'return ' + source.slice(last.start, last.end);
+        if (!opts.asAST) return source.slice(0, last.start) + newLastsource;
+        
+        var newLast = parse(newLastsource, {allowReturnOutsideFunction: true, ecmaVersion: 6}).body.slice(-1)[0];
         ast.body.push(newLast);
-        ast.end += 'return '.length
-        return newSource.slice(ast.start, ast.end);
-    }
+        ast.end += 'return '.length;
+        return ast;
+    },
 
+    wrapInFunction: function(code, opts) {
+        opts = opts || {};
+        var transformed = lively.ast.transform.returnLastStatement(code, opts);
+        return opts.asAST ?  {
+          type: "Program",
+          body: [{
+            type: "ExpressionStatement",
+            expression: {
+              body: {body: transformed.body, type: "BlockStatement"},
+              params: [],
+              type: "FunctionExpression"
+            },
+          }]
+        } : "function() {\n" + transformed + "\n}";
+    }
 });
 
 }) // end of module

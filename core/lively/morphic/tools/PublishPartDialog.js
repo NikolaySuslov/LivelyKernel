@@ -1,19 +1,21 @@
 module('lively.morphic.tools.PublishPartDialog').requires('lively.persistence.BuildSpec', 'lively.PartsBin').toRun(function() {
 
-lively.BuildSpec('lively.morphic.tools.PublishPartDialog', {
+lively.BuildSpec("lively.morphic.tools.PublishPartDialog", {
     _Extent: lively.pt(479.0,437.0),
     className: "lively.morphic.Window",
     name: "PublishPartDialog",
     sourceModule: "lively.morphic.Widgets",
-    contentOffset: lively.pt(3,22.0),
+    contentOffset: lively.pt(3.0,22.0),
     draggingEnabled: true,
-    layout: {adjustForNewBounds: true},
+    layout: {
+        adjustForNewBounds: true
+    },
     minExtent: lively.pt(479.0,437.0),
     submorphs: [{
         _BorderColor: Color.rgb(95,94,95),
-        _Extent: lively.pt(473,411.0),
+        _Extent: lively.pt(473.0,411.0),
         _Fill: Color.rgb(243,243,243),
-        _Position: lively.pt(3,23),
+        _Position: lively.pt(3.0,23.0),
         className: "lively.morphic.Box",
         doNotCopyProperties: [],
         doNotSerialize: [],
@@ -23,7 +25,6 @@ lively.BuildSpec('lively.morphic.tools.PublishPartDialog', {
             resizeWidth: true
         },
         name: "PublishPartPanePane",
-        ownerApp: "[object Object]",
         sourceModule: "lively.morphic.Core",
         submorphs: [{
             _BorderColor: Color.rgb(227,227,227),
@@ -35,7 +36,7 @@ lively.BuildSpec('lively.morphic.tools.PublishPartDialog', {
             _FontFamily: "Helvetica",
             _MaxTextWidth: 164,
             _MinTextWidth: 164,
-            _Position: lively.pt(10.0,60),
+            _Position: lively.pt(10.0,60.0),
             _WordBreak: "break-all",
             allowInput: true,
             className: "lively.morphic.Text",
@@ -70,7 +71,7 @@ lively.BuildSpec('lively.morphic.tools.PublishPartDialog', {
             _InputAllowed: true,
             _MaxTextWidth: 444,
             _MinTextWidth: 444,
-            _Position: lively.pt(10.0,262),
+            _Position: lively.pt(10.0,262.0),
             _WordBreak: "break-all",
             allowInput: true,
             className: "lively.morphic.Text",
@@ -99,7 +100,7 @@ lively.BuildSpec('lively.morphic.tools.PublishPartDialog', {
             _MaxTextWidth: 114,
             _MinTextWidth: 114,
             _Padding: lively.rect(5,5,0,0),
-            _Position: lively.pt(5.0,40),
+            _Position: lively.pt(5.0,40.0),
             className: "lively.morphic.Text",
             doNotCopyProperties: [],
             doNotSerialize: [],
@@ -123,7 +124,7 @@ lively.BuildSpec('lively.morphic.tools.PublishPartDialog', {
             _MaxTextWidth: 250,
             _MinTextWidth: 250,
             _Padding: lively.rect(5,5,0,0),
-            _Position: lively.pt(5,237),
+            _Position: lively.pt(5.0,237.0),
             className: "lively.morphic.Text",
             doNotCopyProperties: [],
             doNotSerialize: [],
@@ -143,7 +144,7 @@ lively.BuildSpec('lively.morphic.tools.PublishPartDialog', {
             _MaxTextWidth: 114,
             _MinTextWidth: 114,
             _Padding: lively.rect(5,5,0,0),
-            _Position: lively.pt(195.0,40),
+            _Position: lively.pt(195.0,40.0),
             className: "lively.morphic.Text",
             doNotCopyProperties: [],
             doNotSerialize: [],
@@ -166,7 +167,7 @@ lively.BuildSpec('lively.morphic.tools.PublishPartDialog', {
             _BorderRadius: 5,
             _BorderWidth: 1,
             _Extent: lively.pt(101.0,21.0),
-            _Position: lively.pt(355.0,376),
+            _Position: lively.pt(355.0,376.0),
             className: "lively.morphic.Button",
             doNotCopyProperties: [],
             doNotSerialize: [],
@@ -189,7 +190,7 @@ lively.BuildSpec('lively.morphic.tools.PublishPartDialog', {
             _BorderRadius: 5.2,
             _BorderWidth: 1.1840000000000002,
             _Extent: lively.pt(101.0,21.0),
-            _Position: lively.pt(245.0,376),
+            _Position: lively.pt(245.0,376.0),
             className: "lively.morphic.Button",
             doNotCopyProperties: [],
             doNotSerialize: [],
@@ -218,7 +219,7 @@ lively.BuildSpec('lively.morphic.tools.PublishPartDialog', {
             _InputAllowed: true,
             _MaxTextWidth: 445,
             _MinTextWidth: 445,
-            _Position: lively.pt(10.0,112),
+            _Position: lively.pt(10.0,112.0),
             _WordBreak: "break-all",
             allowInput: true,
             className: "lively.morphic.Text",
@@ -246,7 +247,7 @@ lively.BuildSpec('lively.morphic.tools.PublishPartDialog', {
             _MaxTextWidth: 250,
             _MinTextWidth: 250,
             _Padding: lively.rect(5,5,0,0),
-            _Position: lively.pt(5,92),
+            _Position: lively.pt(5.0,92.0),
             className: "lively.morphic.Text",
             doNotCopyProperties: [],
             doNotSerialize: [],
@@ -264,7 +265,7 @@ lively.BuildSpec('lively.morphic.tools.PublishPartDialog', {
             _BorderRadius: 5.2,
             _BorderWidth: 1.1840000000000002,
             _Extent: lively.pt(150.0,21.0),
-            _Position: lively.pt(15.0,376),
+            _Position: lively.pt(15.0,376.0),
             className: "lively.morphic.Button",
             doNotCopyProperties: [],
             doNotSerialize: [],
@@ -291,7 +292,7 @@ lively.BuildSpec('lively.morphic.tools.PublishPartDialog', {
             _FontFamily: "Helvetica",
             _MaxTextWidth: 250,
             _MinTextWidth: 250,
-            _Position: lively.pt(200.0,60),
+            _Position: lively.pt(200.0,60.0),
             _WordBreak: "break-all",
             allowInput: true,
             className: "lively.morphic.Text",
@@ -317,7 +318,7 @@ lively.BuildSpec('lively.morphic.tools.PublishPartDialog', {
             _Extent: lively.pt(389.0,23.0),
             _Fill: Color.rgb(243,243,243),
             _FontSize: 10,
-            _Position: lively.pt(71.0,16),
+            _Position: lively.pt(71.0,16.0),
             className: "lively.morphic.DropDownList",
             name: "PartsBinURLChooser",
             selectOnMove: false,
@@ -327,8 +328,8 @@ lively.BuildSpec('lively.morphic.tools.PublishPartDialog', {
                 this.selectAt(0);
         },
             reset: function reset() {
-                    this.name = "PartsBinURLChooser";
-                }
+            this.name = "PartsBinURLChooser";
+        }
         },{
             _Extent: lively.pt(62.0,18.0),
             _FontFamily: "Arial, sans-serif",
@@ -336,7 +337,7 @@ lively.BuildSpec('lively.morphic.tools.PublishPartDialog', {
             _MaxTextWidth: 114,
             _MinTextWidth: 114,
             _Padding: lively.rect(5,5,0,0),
-            _Position: lively.pt(5,15),
+            _Position: lively.pt(5.0,15.0),
             className: "lively.morphic.Text",
             doNotSerialize: ["charsTyped"],
             emphasis: [[0,8,{
@@ -356,15 +357,15 @@ lively.BuildSpec('lively.morphic.tools.PublishPartDialog', {
         target: null,
         withLayers: "[GrabbingLayer]",
         askForDiffViewer: function askForDiffViewer() {
-        $world.confirm('A newer version of '+this.get('NameText').textString+' is available. Show diff?', function (bool) {bool && this.showDiff()}.bind(this))
+        $world.confirm('A newer version of '+this.get('NameText').textString+' is available. Show diff?', function (bool) {bool && this.showDiff()}.bind(this));
     },
         checkForUpdates: function checkForUpdates() {
         var space = lively.PartsBin.partsSpaceNamed(this.get('CategoryText').textString),
             name = this.get('NameText').textString,
             fileUrl = space.getURL().withFilename(encodeURI(name))+'.json';
-    
+
         var webR = new WebResource(fileUrl);
-        
+
         if (webR.exists()) {
             var rev = webR.getHeadRevision().headRevision;
             if (this.target.getPartsBinMetaInfo().revisionOnLoad == rev) 
@@ -374,24 +375,23 @@ lively.BuildSpec('lively.morphic.tools.PublishPartDialog', {
             }
         }
         else 
-            alertOK("Part does not exist in PartsBin.")    
-        
+            alertOK("Part does not exist in PartsBin.");
     },
         copyToPartsBin: function copyToPartsBin(morph) {
         var url = this.get('PartsBinURLChooser').selection,
             name = this.get('NameText').textString,
             info = morph.getPartsBinMetaInfo(),
-            categoryName = this.get('CategoryText').textString.
-            categoryName = this.get('CategoryText').textString
+            categoryName = this.get('CategoryText').textString;
         morph.setName(name);
-        
+
         info.partsSpaceName = lively.PartsBin.getLocalPartsBinURL().eq(url) ?
-            categoryName : String(url.withFilename('../' + categoryName).withRelativePartsResolved());
+            categoryName :
+            String(url.withFilename('../' + categoryName).withRelativePartsResolved());
         info.comment = this.get('CommentText').textString;
         if (!info.changes) info.changes = [];
-        var change = { 
-            date: new Date(), 
-            author: this.world().getUserName(), 
+        var change = {
+            date: new Date(),
+            author: this.world().getUserName(),
             message: this.get('CommitMessageText').textString,
             id: Strings.newUUID()
         }
@@ -414,23 +414,31 @@ lively.BuildSpec('lively.morphic.tools.PublishPartDialog', {
         $world.publishPartDialog && $world.publishPartDialog.remove()
     },
         reset: function reset() {
-        this.setTarget(null)
-       
+        this.setTarget(null);
     },
         setTarget: function setTarget(morph) {
-        this.target = morph 
+        this.target = morph;
         if (!morph) {
             this.get('NameText').textString = 'Anonymous';
             this.get('CategoryText').textString = 'Default';
-            this.get('CommentText').textString = 'no comment';        
-            this.get('CommitMessageText').textString = 'no comment'      
-            return
+            this.get('CommentText').textString = 'no comment';
+            this.get('CommitMessageText').textString = 'no comment';
+            return;
         }
         var info = this.target.getPartsBinMetaInfo();
         this.get('NameText').textString = info.partName || morph.getName();
-        if (info.partsSpaceName) this.get('CategoryText').textString = info.partsSpaceName;
-        if (info.comment) this.get('CommentText').textString = info.comment;        
-    
+        if (info.partsSpaceName) {
+            var partsSpace = lively.PartsBin.partsSpaceNamed(info.partsSpaceName),
+                partsBinURL = this.get('PartsBinURLChooser').getList().find(function(pbURL) {
+                    return !partsSpace.getURL().relativePathFrom(pbURL).startsWith('../');
+                });
+            if (partsBinURL) {
+                this.get('PartsBinURLChooser').setSelectionMatching(partsBinURL);
+                this.get('CategoryText').textString = 'PartsBin/' + partsSpace.getURL().relativePathFrom(partsBinURL);
+            } else
+                this.get('CategoryText').textString = info.partsSpaceName;
+        }
+        if (info.comment) this.get('CommentText').textString = info.comment;
     },
         showDiff: function showDiff() {
         if (this.target) {

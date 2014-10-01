@@ -1,6 +1,28 @@
-module('lively.ide.codeeditor.JS').requires('lively.ast.acorn', 'lively.ide.codeeditor.DocumentChange').toRun(function() {
+module('lively.ide.codeeditor.modes.JavaScript').requires('lively.ide.codeeditor.ace', 'lively.ast.acorn').toRun(function() {
 
-Object.subclass('lively.ide.codeeditor.JS.Navigator',
+var jsMode = lively.ide.ace.require('ace/mode/javascript').Mode
+
+jsMode.addMethods({
+
+    morphMenuItems: function(items, editor) {
+        var mode = this,
+            livelyREvaluateEnabled = mode.livelyEvalMethod === 'lively-R-evaluate',
+            s = editor.getSession();
+        items.push(['js',
+            [["open AST editor",
+             function() {
+                 lively.ide.commands.exec("lively.ide.openASTEditor", editor);
+             }]]]);
+        return items;
+    }
+
+});
+
+
+// -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+
+Object.subclass('lively.ide.codeeditor.modes.JavaScript.Navigator',
 'parsing', {
     ensureAST: function(astOrSource) {
         return Object.isString(astOrSource) ? lively.ast.acorn.fuzzyParse(astOrSource) : astOrSource;
@@ -66,10 +88,10 @@ Object.subclass('lively.ide.codeeditor.JS.Navigator',
     }
 });
 
-Object.subclass('lively.ide.codeeditor.JS.RangeExpander',
+Object.subclass('lively.ide.codeeditor.modes.JavaScript.RangeExpander',
 'interface', {
     expandRegion: function(src, ast, expandState) {
-        ast = ast || (new lively.ide.codeeditor.JS.Navigator()).ensureAST(src);
+        ast = ast || (new lively.ide.codeeditor.modes.JavaScript.Navigator()).ensureAST(src);
         var pos = expandState.range[0],
             nodes = acorn.walk.findNodesIncluding(ast, pos),
             containingNode = nodes.reverse().detect(function(node) {
@@ -87,7 +109,7 @@ Object.subclass('lively.ide.codeeditor.JS.RangeExpander',
 
 // Used as a plugin for the lively.ide.CodeEditor.DocumentChangeHandler, will
 // trigger attach/detach actions for modes that require those
-lively.ide.codeeditor.ModeChangeHandler.subclass('lively.ide.codeeditor.JS.ChangeHandler',
+lively.ide.codeeditor.ModeChangeHandler.subclass('lively.ide.codeeditor.modes.JavaScript.ChangeHandler',
 "settings", {
     targetMode: "ace/mode/javascript"
 },
@@ -140,7 +162,7 @@ lively.ide.codeeditor.ModeChangeHandler.subclass('lively.ide.codeeditor.JS.Chang
 
 (function registerModeHandler() {
     lively.module('lively.ide.codeeditor.DocumentChange').runWhenLoaded(function() {
-        lively.ide.CodeEditor.DocumentChangeHandler.registerModeHandler(lively.ide.codeeditor.JS.ChangeHandler);
+        lively.ide.CodeEditor.DocumentChangeHandler.registerModeHandler(lively.ide.codeeditor.modes.JavaScript.ChangeHandler);
     });
 })();
 
