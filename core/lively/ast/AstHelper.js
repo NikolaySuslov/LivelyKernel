@@ -966,7 +966,18 @@ lively.ast.MozillaAST.BaseVisitor.subclass("lively.ast.ComparisonVisitor",
 lively.ast.MozillaAST.BaseVisitor.subclass("lively.ast.ScopeVisitor",
 'scope specific', {
     newScope: function(scopeNode, parentScope) {
-        var scope = {node: scopeNode, varDecls: [], funcDecls: [], classDecls: [], methodDecls: [], refs: [], params: [], subScopes: []}
+        var scope = {
+          node: scopeNode,
+          varDecls: [],
+          varDeclPaths: [],
+          funcDecls: [],
+          classDecls: [],
+          methodDecls: [],
+          refs: [],
+          params: [],
+          catches: [],
+          subScopes: []
+        }
         if (parentScope) parentScope.subScopes.push(scope);
         return scope;
     }
@@ -983,6 +994,7 @@ lively.ast.MozillaAST.BaseVisitor.subclass("lively.ast.ScopeVisitor",
 
     visitVariableDeclaration: function ($super, node, depth, scope, path) {
         scope.varDecls.push(node);
+        scope.varDeclPaths.push(path);
         return $super(node, depth, scope, path);
     },
 
@@ -1098,7 +1110,7 @@ lively.ast.MozillaAST.BaseVisitor.subclass("lively.ast.ScopeVisitor",
         if (node.handler) {
             // handler is a node of type CatchClause
             retVal = this.accept(node.handler, depth, scope, path.concat(["handler"]));
-            scope.params.push(node.handler.param);
+            scope.catches.push(node.handler.param);
         }
 
         node.guardedHandlers && node.guardedHandlers.forEach(function(ea, i) {
@@ -1272,13 +1284,16 @@ Object.extend(lively.ast.acorn, {
     // FIXME: global (and temporary) findNodeByAstIndex is used by __getClosure and defined in Rewriting.js
     Global.findNodeByAstIndex = acorn.walk.findNodeByAstIndex;
 
-    acorn.walk.findStatementOfNode = function(ast, target) {
-        // find the statement that a target node is in. Example:
+    acorn.walk.findStatementOfNode = function(options, ast, target) {
+        // Can also be called with just ast and target. options can be {asPath: BOOLEAN}.
+        // Find the statement that a target node is in. Example:
         // let source be "var x = 1; x + 1;" and we are looking for the
         // Identifier "x" in "x+1;". The second statement is what will be found.
+        if (!target) { target = ast; ast = options; options = null }
+        if (!options) options = {}
         if (!ast.astIndex) acorn.walk.addAstIndex(ast);
         var found, targetReached = false, bodyNodes, lastStatement;
-        lively.ast.acorn.withMozillaAstDo(ast, {}, function(next, node, _) {
+        lively.ast.acorn.withMozillaAstDo(ast, {}, function(next, node, depth, state, path) {
             if (targetReached || node.astIndex < target.astIndex) return;
             if (node.type === "Program" || node.type === "BlockStatement") {
                 bodyNodes = node.body;
@@ -1290,7 +1305,7 @@ Object.extend(lively.ast.acorn, {
                 if (nodeIdxInProgramNode > -1) lastStatement = node;
             }
             if (!targetReached && (node === target || node.astIndex === target.astIndex)) {
-                targetReached = true; found = lastStatement;
+                targetReached = true; found = options.asPath ? path : lastStatement;
             }
             !targetReached && next();
         });
@@ -1357,18 +1372,20 @@ Object.extend(lively.ast.query, {
 
     topLevelDeclsAndRefs: function(ast, options) {
         if (typeof ast === "string") ast = lively.ast.acorn.parse(ast, {withComments: true});
-        var scope = lively.ast.query.scopes(ast),
-            useComments = options && !!options.jslintGlobalComment,
-            declared = declaredVarNames(scope),
-            refs = scope.refs.concat(scope.subScopes.map(findUndeclaredReferences).flatten()),
-            undeclared = refs.pluck('name').withoutAll(declared);
+
+        var scope         = lively.ast.query.scopes(ast),
+            useComments   = options && !!options.jslintGlobalComment,
+            declared      = declaredVarNames(scope),
+            refs          = scope.refs.concat(scope.subScopes.map(findUndeclaredReferences).flatten()),
+            undeclared    = refs.pluck('name').withoutAll(declared);
 
         return {
-            varDecls: scope.varDecls,
-            funcDecls: scope.funcDecls,
-            declaredNames: declared,
+            scope:           scope,
+            varDecls:        scope.varDecls,
+            funcDecls:       scope.funcDecls,
+            declaredNames:   declared,
             undeclaredNames: undeclared,
-            refs: refs
+            refs:            refs
         }
 
         // -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
@@ -1377,6 +1394,7 @@ Object.extend(lively.ast.query, {
             return [scope.node.id && scope.node.id.name]
                 .concat(scope.funcDecls.pluck('id').pluck('name')).compact()
                 .concat(scope.params.pluck('name'))
+                .concat(scope.catches.pluck('name'))
                 .concat(scope.varDecls.pluck('declarations').flatten().pluck('id').pluck('name'))
                 .concat(scope.classDecls.pluck('id').pluck('name'))
                 .concat(!useComments ? [] :
@@ -1410,8 +1428,19 @@ Object.extend(lively.ast.query, {
             noGlobals = topLevel.declaredNames.concat(q.knownGlobals);
         return topLevel.refs.filter(function(ea) {
             return noGlobals.indexOf(ea.name) === -1; })
-    }
+    },
 
+    findNodesIncludingLines: function(ast, code, lines, options) {
+      if (!code && !ast) throw new Error("Need at least ast or code");
+      code = code ? code : lively.ast.acorn.stringify(ast);
+      ast = ast && ast.loc ? ast : lively.ast.acorn.parse(code, {locations: true});
+      return lively.ast.acorn.withMozillaAstDo(ast, [], function(next, node, found) {
+        if (lines.every(function(line) {
+          return Numbers.between(line, node.loc.start.line, node.loc.end.line); })) {
+            found.pushIfNotIncluded(node); next(); }
+        return found;
+      });
+    }
 });
 
 Object.extend(lively.ast.transform, {
@@ -1458,7 +1487,7 @@ Object.extend(lively.ast.transform, {
 
         replaceNode: function(target, replacementFunc, sourceOrChanges) {
             // parameters:
-            //   - target: ast note
+            //   - target: ast node
             //   - replacementFunc that gets this node and its source snippet
             //     handed and should produce a new ast node.
             //   - sourceOrChanges: If its a string -- the source code to rewrite
@@ -1497,7 +1526,7 @@ Object.extend(lively.ast.transform, {
                     replacementSource = helper._node2string(replacement);
 
             var changes = [{type: 'del', pos: pos.start, length: pos.end - pos.start},
-                          {type: 'add', pos: pos.start, string: replacementSource}];
+                           {type: 'add', pos: pos.start, string: replacementSource}];
 
             return {
                 changes: sourceChanges.changes.concat(changes),
@@ -1565,21 +1594,40 @@ Object.extend(lively.ast.transform, {
             topLevel = lively.ast.query.topLevelDeclsAndRefs(ast);
 
         if (ignoreUndeclaredExcept) {
-            blacklist = topLevel.undeclaredNames.withoutAll(ignoreUndeclaredExcept).concat(blacklist);
+            blacklist = topLevel.undeclaredNames
+              .withoutAll(ignoreUndeclaredExcept)
+              .concat(blacklist);
         }
 
-        // 1. make all references declared in the toplevel scope into property
+        // 1. find those var declarations that should not be rewritten. we
+        // currently ignore var declarations in for loops and the error parameter
+        // declaration in catch clauses
+        var scope = topLevel.scope;
+        blacklist.pushAll(scope.catches.pluck("name"));
+        var forLoopDecls = scope.varDecls.filter(function(decl, i) {
+            var path = lively.PropertyPath(scope.varDeclPaths[i]),
+                parent = path.slice(0,-1).get(ast);
+            return parent.type === "ForStatement";
+        });
+        blacklist.pushAll(forLoopDecls.pluck("declarations").flatten().pluck("id").pluck("name"));
+
+        // 2. make all references declared in the toplevel scope into property
         // reads of assignToObj
         // Example "var foo = 3; 99 + foo;" -> "var foo = 3; 99 + Global.foo;"
         var result = lively.ast.transform.helper.replaceNodes(
             topLevel.refs
-                .filter(shouldBeCapturedRef)
-                .map(function(ref) { return {target: ref, replacementFunc: function(ref) { return member(ref, assignToObj) }}; }), source);
+                .filter(shouldRefBeCaptured)
+                .map(function(ref) {
+                  return {
+                    target: ref,
+                    replacementFunc: function(ref) { return member(ref, assignToObj); }
+                  };
+                }), source);
 
-        // 2. turn var declarations into assignments to assignToObj
+        // 3. turn var declarations into assignments to assignToObj
         // Example: "var foo = 3; 99 + foo;" -> "Global.foo = 3; 99 + foo;"
         result = lively.ast.transform.helper.replaceNodes(
-            topLevel.varDecls
+            topLevel.varDecls.withoutAll(forLoopDecls)
                 .map(function(decl) {
                     return {
                         target: decl,
@@ -1588,19 +1636,20 @@ Object.extend(lively.ast.transform, {
                                 var scopes = lively.ast.query.scopes(lively.ast.acorn.parse(s, {addSource: true}));
                                 declNode = scopes.varDecls[0]
                             }
+
                             return declNode.declarations.map(function(ea) {
-                                return shouldBeCapturedDecl(ea) ?
+                                return shouldDeclBeCaptured(ea) ?
                                     assign(ea.id, ea.init) : varDecl(ea); });
                         }
                     }
                 }), result);
 
-        // 3. assignments for function declarations in the top level scope are
+        // 4. assignments for function declarations in the top level scope are
         // put in front of everything else:
         // "return bar(); function bar() { return 23 }" -> "Global.bar = bar; return bar(); function bar() { return 23 }"
         if (topLevel.funcDecls.length) {
             var globalFuncs = topLevel.funcDecls
-                .filter(shouldBeCapturedDecl)
+                .filter(shouldDeclBeCaptured)
                 .map(function(decl) {
                     var funcId = {type: "Identifier", name: decl.id.name};
                     return lively.ast.acorn.stringify(assign(funcId, funcId));
@@ -1618,12 +1667,12 @@ Object.extend(lively.ast.transform, {
 
         // -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
-        function shouldBeCapturedRef(ref) {
+        function shouldRefBeCaptured(ref) {
             return blacklist.indexOf(ref.name) === -1
                 && (!whitelist || whitelist.indexOf(ref.name) > -1);
         }
 
-        function shouldBeCapturedDecl(decl) { return shouldBeCapturedRef(decl.id); }
+        function shouldDeclBeCaptured(decl) { return shouldRefBeCaptured(decl.id); }
 
         function assign(id, value) {
             return {

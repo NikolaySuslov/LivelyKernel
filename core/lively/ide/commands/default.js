@@ -24,8 +24,12 @@ Object.extend(lively.ide.commands, {
 
     helper: {
         noCodeEditorActive: function() {
+            return !lively.ide.commands.helper.codeEditorActive();
+        },
+
+        codeEditorActive: function() {
             var f = lively.morphic.Morph.focusedMorph();
-            return f && !f.isCodeEditor;
+            return f && f.isCodeEditor;
         },
 
         focusedMorph: function() {
@@ -383,6 +387,17 @@ Object.extend(lively.ide.commands.byName, {
         }
     },
 
+    'lively.ide.WindowNavigation.reopenClosedWindows': {
+        description: 'recover closed windows',
+        exec: function() {
+            var narrower = $world.submorphs.detect(function(morph) { return morph.name && morph.name.include('lively.ide.WindowNavigation.NarrowingList'); });
+            if (narrower) {
+              narrower.state.allCandidates.pluck("value").reverse().invoke("openInWorld");
+            } else show("Could not recover windows");
+            return true;
+        }
+    },
+
     // commands
     'lively.ide.commands.keys.reset': {
         description: 'reset key bindings',
@@ -679,37 +694,32 @@ Object.extend(lively.ide.commands.byName, {
     'lively.ide.codeSearch': {
         description: 'code search',
         exec: function(optSource) {
-            var source = optSource;
+            lively.require('lively.ide.tools.CodeSearch').toRun(function() {
+                lively.ide.tools.CodeSearch.doSearch(optSource || ""); });
+            return true;
+        }
+    },
 
-            function doSearch(source, thenDo) {
-                lively.require('lively.ide.tools.CodeSearch').toRun(function() {
-                    thenDo(null, lively.ide.tools.CodeSearch.doSearch(source));
+    'lively.ide.resourceSearch': {
+        description: 'resource search (worlds, parts, files)',
+        exec: function(optSearchTerm) {
+            if (optSearchTerm) doSearch(optSearchTerm);
+            else $world.prompt("Search for world, part, or file matching:", function(input) {
+                if (input) doSearch("*" + input + "*");
+            }, {historyId: "lively.ide.resourceSearch.prompt"});
+            return true;
+
+            function doSearch(searchTerm) {
+                searchTerm = searchTerm.replace(/\*/g, "%"); // for SQL LIKE matching
+                Functions.composeAsync(
+                    function(next) { lively.require('lively.net.Wiki').toRun(function() { next(); }); },
+                    function(next) { lively.net.Wiki.findResourcePathsMatching(searchTerm, true, next); },
+                    function(results, next) { lively.net.Wiki.openResourceList(results, {title: "search: " + searchTerm}, next); }
+                )(function(err, resultListWindow) {
+                    if (err) show("Error searching for " + searchTerm);
+                    resultListWindow.openInWorld().comeForward();
                 })
             }
-
-            function askForSource(thenDo) {
-                $world.prompt('Enter query for code search', function(input) {
-                    if (!input) thenDo('aborted');
-                    else thenDo(null, input);
-                }, {historyId: 'lively.ide.codeSearchQuery'});
-            }
-
-            var run;
-
-            if (source) run = doSearch.curry(source);
-            else {
-                var m = lively.ide.commands.helper.focusedMorph();
-                if (m && m.isCodeEditor) {
-                    source = m.getSelectionOrLineString();
-                    run = doSearch.curry(source);
-                } else {
-                    run = Functions.composeAsync(askForSource, doSearch)
-                }
-            }
-
-            run(function(err, searchWindow) { if (err) show(err); });
-
-            return true;
         }
     },
 
@@ -1211,10 +1221,11 @@ Object.extend(lively.ide.commands.byName, {
                 }
             }
             lively.ide.CommandLineSearch.interactivelyChooseFileSystemItem(
-                        'choose directory: ',
+                        'open file: ',
                         null,
-                        function(files) { return files.filterByKey('isDirectory'); },
-                        'lively.ide.findFile.Narrower2',
+                        function(files, input) {
+                            return files.length ? files : [{isDirectory: false, path: input}]; },
+                        "lively.ide.findFiles.Narrower",
                         [open]);
 
             // -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-

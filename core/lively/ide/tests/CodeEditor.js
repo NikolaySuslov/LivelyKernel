@@ -304,11 +304,11 @@ lively.ide.tests.CodeEditor.Base.subclass('lively.ide.tests.CodeEditor.Commands'
         e.aceEditor.execCommand('printit');
         this.assertHasText(e, "23 // => 23");
         this.assertEquals(e.getTextRange(), " // => 23");
-        
+
         // 2. multiline
-        e.textString = "var foo = {x: 23, y: 24}; foo";
+        e.textString = "var testPrintItAsComment_var = {x: 23, y: 24}; testPrintItAsComment_var";
         e.aceEditor.execCommand('printit');
-        this.assertHasText(e, "var foo = {x: 23, y: 24}; foo // => {\n//   x: 23,\n//   y: 24\n// }");
+        this.assertHasText(e, "var testPrintItAsComment_var = {x: 23, y: 24}; testPrintItAsComment_var // => {\n//   x: 23,\n//   y: 24\n// }");
         this.assertEquals(e.getTextRange(), " // => {\n//   x: 23,\n//   y: 24\n// }");
         this.done();
     },
@@ -455,6 +455,20 @@ lively.ide.tests.CodeEditor.Base.subclass('lively.ide.tests.CodeEditor.JSAST',
             this.assertEquals('Program', e.aceEditor.session.$ast.type);
             this.done();
         }, 400);
+    },
+
+    testAutoEvalPrintItComments: function() {
+        var e = this.editor, text;
+        e.setAutoEvalPrintItComments(true);
+        e.textString = "1 + 2";
+        this.delay(function() {
+          this.assertEquals("1 + 2", e.textString);
+          e.textString = "1 + 2 // => 45";
+          this.delay(function() {
+              this.assertEquals("1 + 2 // => 3", e.textString);
+              this.done();
+          }, 300);
+        }, 300);
     }
 
 });

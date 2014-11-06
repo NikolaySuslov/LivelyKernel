@@ -85,6 +85,7 @@ var browserTests = [
 
     // network
     "lively.net.tests.SessionTracker",
+    "lively.net.tests.Wiki",
 
     // lang support
     "lively.lang.tests.ExtensionTests",
@@ -148,6 +149,7 @@ var browserTests = [
     "lively.morphic.tests.TabTests",
     "lively.morphic.tests.Text",
     "lively.morphic.tests.TextUndoTests",
+    "lively.morphic.tests.Tree",
 
     // cop
     "cop.tests.LayerTests",
@@ -181,10 +183,7 @@ if (filter) {
 prepareConfig();
 
 (function setUserName() {
-    var s = lively.net.SessionTracker.getSession();
-    Functions.waitFor(1000, function() { return !! s.isConnected(); }, function() {
-        lively.morphic.World.current().setCurrentUser("run_tests-" + testRunId);
-    });
+    lively.morphic.World.current().setCurrentUser("run_tests-" + testRunId);
 })();
 
 if (lively.Config.get("serverTestDebug")) {
