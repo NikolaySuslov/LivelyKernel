@@ -1093,6 +1093,15 @@ Object.extend(lively.ide.commands.byName, {
     'lively.ide.openGitControl': {description: 'open GitControl', isActive: lively.ide.commands.helper.noCodeEditorActive, exec: function() { $world.openGitControl(); return true; }},
     'lively.ide.openServerLog': {description: 'open ServerLog', isActive: lively.ide.commands.helper.noCodeEditorActive, exec: function() { require('lively.ide.tools.ServerLog').toRun(function() { lively.ide.tools.ServerLog.open(); }); return true; }},
     'lively.ide.openDiffer': {description: 'open text differ', isActive: lively.ide.commands.helper.noCodeEditorActive, exec: function() { require('lively.ide.tools.Differ').toRun(function() { lively.BuildSpec('lively.ide.tools.Differ').createMorph().openInWorldCenter().comeForward(); }); return true; }},
+    'lively.ide.showWikiFlap': {
+        description: 'show wiki flap',
+        exec: function(path) {
+            require('lively.net.tools.Wiki').toRun(function() {
+                lively.BuildSpec('lively.wiki.ToolFlap').createMorph().openInWorld();
+            });
+            return true;
+        }
+    },
 
     'lively.ide.diffWorkspaces': {
         description: 'diff workspaces',
@@ -1391,9 +1400,9 @@ Object.extend(lively.ide.commands.byName, {
     'lively.net.lively2lively.openWorkspace': {description: 'open Lively2LivelyWorkspace', isActive: lively.ide.commands.helper.noCodeEditorActive, exec: function() { lively.require('lively.net.tools.Lively2Lively').toRun(function() { lively.BuildSpec("lively.net.tools.Lively2LivelyWorkspace").createMorph().openInWorldCenter().comeForward(); }); return true; }},
     'lively.net.lively2lively.listSessions': {
         description: 'list lively-2-lively sessions',
-        exec: function() {
+        exec: function(withSelectedSessionDo) {
 
-            var foundCandidates = []
+            var foundCandidates = [];
 
             var searcher = Functions.debounce(200, function(input, callback) {
                 lively.net.tools.Functions.withSessionsDo(
@@ -1433,9 +1442,11 @@ Object.extend(lively.ide.commands.byName, {
                     candidatesUpdater: candidateBuilder,
                     keepInputOnReactivate: true,
                     actions: [{
-                        name: 'open workspace',
+                        name: 'open workspace or run callback',
                         exec: function(candidate) {
-                            lively.net.tools.Functions.openWorkspaceForSession(candidate);
+                            withSelectedSessionDo ?
+                              withSelectedSessionDo(null, candidate) :
+                              lively.net.tools.Functions.openWorkspaceForSession(candidate);
                         }
                     }, {
                         name: 'open world preview',

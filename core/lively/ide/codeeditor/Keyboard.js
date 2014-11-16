@@ -664,12 +664,12 @@ Object.subclass('lively.ide.CodeEditor.KeyboardShortcuts',
     setupEditorConfigBindings: function(kbd) {
             this.addCommands(kbd, [{
                 name: 'increasefontsize',
-                bindKey: {win: "Ctrl-»", mac: "Command-»"},
+                bindKey: {win: "Ctrl-+", mac: "Command-+|Command-="},
                 exec: function(ed) { ed.$morph.setFontSize(ed.$morph.getFontSize() + 1); },
                 readOnly: true
             }, {
                 name: 'decreasefontsize',
-                bindKey: {win: "Ctrl-½", mac: "Command-½"},
+                bindKey: {win: "Ctrl-+", mac: "Command--|Command-_"},
                 exec: function(ed) { ed.$morph.setFontSize(ed.$morph.getFontSize() - 1); },
                 readOnly: true
             }, {
@@ -916,7 +916,7 @@ Object.subclass('lively.ide.CodeEditor.KeyboardShortcuts',
                 ed.$morph.withASTDo(function(ast) {
                     var state = ed.$expandRegionState || (ed.$expandRegionState = {range: ed.$morph.getSelectionRange()});
                     var nav = new lively.ide.codeeditor.modes.JavaScript.RangeExpander();
-                    var newState = nav.expandRegion(ed.$morph.textString, ast, state);
+                    var newState = nav.expandRegion(ed.$morph, ed.$morph.textString, ast, state);
                     if (newState && newState.range) {
                         ed.$morph.setSelectionRange(newState.range[0], newState.range[1]);
                         ed.$expandRegionState = newState;
@@ -934,7 +934,7 @@ Object.subclass('lively.ide.CodeEditor.KeyboardShortcuts',
                     var state = ed.$expandRegionState;
                     if (!state) return;
                     var nav = new lively.ide.codeeditor.modes.JavaScript.RangeExpander();
-                    var newState = nav.contractRegion(ed.$morph.textString, ast, state);
+                    var newState = nav.contractRegion(ed.$morph, ed.$morph.textString, ast, state);
                     if (newState && newState.range) {
                         ed.$morph.setSelectionRange(newState.range[0], newState.range[1]);
                         ed.$expandRegionState = newState;

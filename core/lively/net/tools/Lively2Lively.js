@@ -1,4 +1,4 @@
-module('lively.net.tools.Lively2Lively').requires('lively.persistence.BuildSpec', 'lively.net.tools.Functions').toRun(function() {
+module('lively.net.tools.Lively2Lively').requires('lively.persistence.BuildSpec', 'lively.net.tools.Functions', 'lively.morphic.tools.FilterableList').toRun(function() {
 
 Object.extend(lively.net.tools.Lively2Lively, {
 
@@ -590,7 +590,8 @@ lively.BuildSpec('lively.net.tools.Lively2LivelyInspector', {
         droppingEnabled: true,
         layout: {adjustForNewBounds: true,resizeHeight: true,resizeWidth: true},
         name: "Lively2LivelyInspector",
-        submorphs: [{
+        submorphs: [
+        lively.BuildSpec("lively.morphic.tools.FilterableList").customize({
             _BorderWidth: 1,
             _ClipMode: "auto",
             _Extent: lively.pt(622.0,320),
@@ -598,18 +599,19 @@ lively.BuildSpec('lively.net.tools.Lively2LivelyInspector', {
             _FontSize: 10,
             _Position: lively.pt(10.0,35.0),
             _StyleClassNames: ["SessionList"],
-            _StyleSheet: ".List {\n\
-        	border: 1px solid #DDD !important;\n\
-        }",
-            className: "lively.morphic.List",
             droppingEnabled: true,
             itemList: [],
             layout: {resizeHeight: false,resizeWidth: true},
             name: "SessionList",
             connectionRebuilder: function connectionRebuilder() {
-            lively.bindings.connect(this, "selection", this.get("Lively2LivelyInspector"), "setWorkspaceTarget", {});
-        }
-        },{
+                var connectionToMorphNamedFilterableList = this.get('filter').attributeConnections.find(function(ea) {
+                    return ea.sourceAttrName === 'inputChange'
+                })
+                connectionToMorphNamedFilterableList && connectionToMorphNamedFilterableList.disconnect();
+                lively.bindings.connect(this.get('filter'),"inputChange", this, "inputChange", {})
+                lively.bindings.connect(this.get('list'), "selection", this.get("Lively2LivelyInspector"), "setWorkspaceTarget", {});
+            }
+        }),{
             _BorderColor: Color.rgb(189,190,192),
             _BorderRadius: 5,
             _BorderWidth: 1,
@@ -695,7 +697,7 @@ lively.BuildSpec('lively.net.tools.Lively2LivelyInspector', {
 
         openWorldPreview: function openWorldPreview() {
             lively.net.tools.Functions.openWorldPreview(
-                this.get('SessionList').selection,
+                this.get('SessionList').getSelection(),
                 this.get('SessionList').getSelectedItem().string);
         },
 
@@ -703,8 +705,8 @@ lively.BuildSpec('lively.net.tools.Lively2LivelyInspector', {
             lively.bindings.connect(this.get("RefreshButton"), 'fire', this, 'updateSessions');
             lively.bindings.connect(this.get("PreviewButton"), 'fire', this, 'openWorldPreview');
             lively.bindings.connect(this.get("SendMorphButton"), 'fire', this, 'sendMorphOnUserClick');
-            lively.bindings.connect(this.get("SessionList"), 'selection', this, 'setWorkspaceTarget');
-            this.get("SessionList").selection = null;
+            lively.bindings.connect(this.get("SessionList").get('list'), 'selection', this, 'setWorkspaceTarget');
+            this.get("SessionList").setSelection(null);
             this.get("SessionList").setList([]);
             // this.get('Title').applyStyle({whitespaceHandling: 'pre', wordBreak: 'break-all'})
             this.getPartsBinMetaInfo().addRequiredModule("lively.net.SessionTracker");
@@ -714,7 +716,7 @@ lively.BuildSpec('lively.net.tools.Lively2LivelyInspector', {
         sendMorphOnUserClick: function sendMorphOnUserClick() {
         var world = this.world(),
             sessInspector = this,
-            sel = this.get("SessionList").selection,
+            sel = this.get("SessionList").getSelection(),
             worldName = sel && sel.worldURL;
         if (!sel) { alert('No session selected!'); return }
         alertOK('Please click on the morph that should be send to ' + worldName);
@@ -739,13 +741,13 @@ lively.BuildSpec('lively.net.tools.Lively2LivelyInspector', {
     },
 
         openWorkspaceForSelectedSession: function openWorkspaceForSelectedSession() {
-            var sel = this.get("SessionList").selection;
+            var sel = this.get("SessionList").getSelection();
             if (!sel) { alert('No session selected!'); return }
             lively.net.tools.Functions.openWorkspaceForSession(sel);
         },
 
         visitWorldOfSelectedSession: function visitWorldOfSelectedSession() {
-            var sel = this.get("SessionList").selection;
+            var sel = this.get("SessionList").getSelection();
             sel && lively.net.tools.Functions.visitWorldOfSession(sel);
         },
 
@@ -760,7 +762,7 @@ lively.BuildSpec('lively.net.tools.Lively2LivelyInspector', {
             lively.net.tools.Functions.withSessionsDo(localSession, function(err, sessions) {
                 if (err) {
                     sessionListMorph.setList([]);
-                    sessionListMorph.selection = null;
+                    sessionListMorph.setSelection(null);
                     return;
                 }
 
@@ -772,7 +774,7 @@ lively.BuildSpec('lively.net.tools.Lively2LivelyInspector', {
                     }
                 });
 
-                var id = sessionListMorph.selection && sessionListMorph.selection.id;
+                var id = sessionListMorph.getSelection() && sessionListMorph.getSelection().id;
                 sessionListMorph.setList(items);
                 var prevSel  = sessionListMorph.itemList.detect(function(item) {
                     return item.value.id === id; })
@@ -790,8 +792,7 @@ lively.BuildSpec('lively.net.tools.Lively2LivelyInspector', {
     this.targetMorph.updateSessions();
     this.targetMorph.startStepping(30 * 1000, 'updateSessions');
 }
-});
-
+})
 lively.BuildSpec("lively.net.tools.Lively2LivelyWorkspace", {
     _Extent: lively.pt(729.0,367.0),
     className: "lively.morphic.Window",
@@ -983,6 +984,17 @@ lively.BuildSpec("lively.net.tools.Lively2LivelyWorkspace", {
             $super();
             this.onLoad();
         },
+        onKeyDown: function onKeyDown(evt) {
+        var self = this;
+        var keys = evt.getKeyString();
+        if (keys === "Alt-Shift-T") { // select 'nother session
+          lively.ide.commands.exec(
+            'lively.net.lively2lively.listSessions',
+            function(err, sess) { self.selectTargetSession(sess); })
+          evt.stop(); return true;
+        }
+        return $super(evt);
+    },
         onWindowGetsFocus: function onWindowGetsFocus() {
         this.get('editor').focus();
     },
