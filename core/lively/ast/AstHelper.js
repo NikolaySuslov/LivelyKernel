@@ -1586,6 +1586,7 @@ Object.extend(lively.ast.transform, {
         var ignoreUndeclaredExcept = (options && options.ignoreUndeclaredExcept) || null
         var whitelist = (options && options.include) || null;
         var blacklist = (options && options.exclude) || [];
+        var recordDefRanges = options && options.recordDefRanges;
 
         var ast = typeof astOrSource === 'object' ?
                 astOrSource : lively.ast.acorn.parse(astOrSource),
@@ -1638,8 +1639,14 @@ Object.extend(lively.ast.transform, {
                             }
 
                             return declNode.declarations.map(function(ea) {
+                                var init = {
+                                  operator: "||",
+                                  type: "LogicalExpression",
+                                  left: {computed: true, object: assignToObj,property: {type: "Literal", value: ea.id.name},type: "MemberExpression"},
+                                  right: {name: "undefined", type: "Identifier"}
+                                }
                                 return shouldDeclBeCaptured(ea) ?
-                                    assign(ea.id, ea.init) : varDecl(ea); });
+                                    assign(ea.id, ea.init || init) : varDecl(ea); });
                         }
                     }
                 }), result);
@@ -1662,6 +1669,18 @@ Object.extend(lively.ast.transform, {
                 changes: result.changes.concat([change])
             }
         }
+
+        // 5. def ranges so that we know at which source code positions the
+        // definitions are
+        if (recordDefRanges)
+            result.defRanges = scope.varDecls
+                .pluck("declarations").flatten()
+                .concat(scope.funcDecls)
+                .reduce(function(defs, decl) {
+                    if (!defs[decl.id.name]) defs[decl.id.name] = []
+                    defs[decl.id.name].push({type: decl.type, start: decl.start, end: decl.end});
+                    return defs;
+                }, {});
 
         return result;
 
