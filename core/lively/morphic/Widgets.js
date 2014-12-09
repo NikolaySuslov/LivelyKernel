@@ -74,7 +74,7 @@ lively.morphic.Morph.subclass('lively.morphic.Button',
         return this;
     },
 
-    getLabel: function(label) { return this.label.textString },
+    getLabel: function() { return this.label.textString },
 
     setActive: function(bool) {
         this.isActive = bool;
@@ -1243,7 +1243,7 @@ lively.morphic.Morph.addMethods(
         // -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
         // morphic hierarchy / windows
         items.push(['Open in...', [
-            ['Window', function(evt) { self.openInWindow(evt.mousePoint); }]
+            ['Window', function(evt) { self.openInWindow(evt.getPosition()); }]
         ]]);
 
         // Drilling into scene to addMorph or get a halo
@@ -1674,7 +1674,7 @@ lively.morphic.World.addMethods(
             });
             corner && toolPane.owner.addMorph(corner)
         }
-        var part = toolPane.openMethodFinderFor(searchString.strip(), searchType)
+        var part = toolPane.openMethodFinderFor(searchString.trim(), searchType)
         part.setExtent(toolPane.tabPaneExtent)
         part.owner.layout = part.owner.layout || {};
         part.owner.layout.resizeWidth = true;

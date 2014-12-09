@@ -122,6 +122,7 @@ lively.BuildSpec("lively.ide.tools.JavaScriptWorkspace", {
         _TextMode: "javascript",
         _aceInitialized: true,
         allowInput: true,
+        evalEnabled: true,
         className: "lively.morphic.CodeEditor",
         layout: { resizeHeight: true, resizeWidth: true },
         name: "workspace",
@@ -153,11 +154,14 @@ lively.BuildSpec("lively.ide.tools.JavaScriptWorkspace", {
         }
 
     },
-        boundEval: function boundEval(__evalStatement, __evalRange) {
+      sourceNameForEval: function sourceNameForEval() {
+      return (this.getWindow() ? this.getWindow().getTitle() : "JS-workspace") + "-" + Date.now();
+    },
+        boundEval: function boundEval(__evalStatement, __evalOptions) {
         // Evaluate the string argument in a context in which "this" is
         // determined by the reuslt of #getDoitContext
-        var ctx = this.getDoitContext() || this,
-            result;
+        var ctx = this.getDoitContext() || this, result;
+        __evalOptions = __evalOptions || {};
     
         if (!this.state.workspaceVars) this.state.workspaceVars = {};
         if (!this.state.defRanges) this.state.defRanges = {};
@@ -166,14 +170,15 @@ lively.BuildSpec("lively.ide.tools.JavaScriptWorkspace", {
         lively.lang.VM.runEval(__evalStatement, {
             context: ctx,
             topLevelVarRecorder: this.state.workspaceVars,
-            topLevelDefRangeRecorder: __evalRange ? defRanges : null
+            topLevelDefRangeRecorder: __evalOptions.range ? defRanges : null,
+            sourceURL: __evalOptions.sourceURL
         }, function(err, _result) { result = err || _result; });
     
-        __evalRange && Object.keys(defRanges).forEach(function(key) {
+        __evalOptions.range && Object.keys(defRanges).forEach(function(key) {
             var defRangesForVar = defRanges[key];
             defRangesForVar.forEach(function(range) {
-                range.start += __evalRange.start.index;
-                range.end += __evalRange.start.index;
+                range.start += __evalOptions.range.start.index;
+                range.end += __evalOptions.range.start.index;
             });
         });
     

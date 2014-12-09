@@ -202,7 +202,7 @@ lively.ide.BasicBrowser.subclass('lively.ide.SystemBrowser',
     },
 
     commands: function() {
-        // lively.ide.BrowserCommand.allSubclasses().collect(function(ea) { return ea.type}).join(',\n')
+        // lively.ide.classes().filter(function(ea) { return ea.isSubclassOf(lively.ide.BrowserCommand); }).pluck("type").join(',\n')
         return [
             // lively.ide.BrowseWorldCommand,
             lively.ide.AddNewFileCommand,
@@ -337,7 +337,7 @@ Object.extend(lively.ide, {
     },
 
     browseURL: function(url, browser) {
-        var path = lively.ide.sourceDB().mapURLsToRelativeModulePaths([url]).first();
+        var path = lively.ide.sourceDB().mapURLToRelativeModulePaths(url);
         if (url.isLeaf() && !lively.ide.sourceDB().addModule(path).exists())
             return lively.ide.openFile(url);
 

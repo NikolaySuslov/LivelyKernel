@@ -66,6 +66,7 @@ Object.extend(lively.net.Wiki, {
     },
 
     findResourcePathsMatching: function(pattern, onlyExisiting, thenDo) {
+        if (typeof onlyExisiting === "function") { thenDo = onlyExisiting; onlyExisiting = true; }
         var query = {pathPatterns: [pattern], attributes: ['path', 'change', 'date'], newest: true, orderBy: 'date'};
         if (onlyExisiting) query.exists = true;
         this.getRecords(query, function(err, records) {
@@ -116,7 +117,7 @@ Object.extend(lively.net.Wiki, {
     openResourceList: function(resources, options, thenDo) {
         if (!thenDo && typeof options === 'function') { thenDo = options; options = {}; }
         options = options || {};
-
+debugger;
         var title = options.title || resources.join(", ").truncate(80);
         var nGroups = 0;
         var grouped = groupResources(resources);
@@ -219,13 +220,16 @@ Object.extend(lively.net.Wiki, {
         }
 
         function groupResources(resources) {
+            var parts = resources.grep(/\.(metainfo|json)$/).map(noExtension).uniq();
             return resources.groupBy(function(ea) {
-                if (ea.startsWith("PartsBin/")) return "partsbin";
+                if (parts.include(noExtension(ea))) return "partsbin"
                 if (ea.endsWith(".html")) return "world";
                 if (ea.endsWith(".js")) return "module";
                 return "other";
             });
         }
+
+        function noExtension(name) { return name.replace(/\.[^\.]$/, ""); }
 
         function setStringList(listItems, list) {
             var items = listItems.map(function(path) { return {isListItem: true, value: path, string: path}; })
@@ -254,6 +258,41 @@ Object.extend(lively.net.Wiki, {
                     return item.value;
                 });
         }
+    },
+
+    getTimemachineBaseURL: function() {
+      return URL.root.withFilename('timemachine/');
+    },
+
+    revertToVersion: function(path, versionInfo, thenDo) {
+      var tmURL = lively.net.Wiki.getTimemachineBaseURL(),
+          getURL = tmURL.withFilename(versionInfo.date + '/').withFilename(path),
+          putURL = URL.root.withFilename(path);
+      lively.lang.fun.composeAsync(
+        function(n) {
+          getURL.asWebResource()
+            .createProgressBar('reverting ' + path).enableShowingProgress()
+            .beAsync().get().whenDone(function(content, status) {
+              n(status.isSuccess() ? null :
+                new Error('Revert of ' + path + ' failed while getting content:\n' + status), content); });
+        },
+        function(content, n) {
+          putURL.asWebResource()
+            .createProgressBar('reverting ' + path).enableShowingProgress()
+            .beAsync().put(content).whenDone(function(_, status) {
+              n(status.isSuccess() ? null :
+                new Error('Revert of ' + path + ' failed while writing content:\n' + status));
+          });
+        })(thenDo);
+    },
+
+    revertResources: function(resourcePaths, versionInfo, thenDo) {
+      // lively.net.Wiki.urlToPath("PartsBin/Basic/Rectangle.json")
+      resourcePaths
+        .map(lively.net.Wiki.urlToPath)
+        .mapAsyncSeries(function(path, i, next) {
+          lively.net.Wiki.revertToVersion(path, versionInfo, next);
+        }, thenDo);
     }
 
 });

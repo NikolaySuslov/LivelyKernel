@@ -308,7 +308,7 @@ Object.extend(lively.ide.commands.byName, {
 
             if (!win.normalBounds) win.normalBounds = winB;
 
-            var thirdW = Math.max(660, bounds.width/3),
+            var thirdW = Math.min(750, Math.max(1000, bounds.width/3)),
                 thirdColBounds = bounds.withWidth(thirdW);
 
             if (!how) askForHow();
@@ -1057,42 +1057,32 @@ Object.extend(lively.ide.commands.byName, {
     },
     'lively.ide.openServerWorkspace': {description: 'open ServerWorkspace', isActive: lively.ide.commands.helper.noCodeEditorActive, exec: function() { $world.openServerWorkspace(); return true; }},
     'lively.ide.openShellWorkspace': {description: 'open ShellWorkspace', isActive: lively.ide.commands.helper.noCodeEditorActive, exec: function() { var codeEditor = $world.addCodeEditor({textMode: 'sh', theme: 'pastel_on_dark', title: 'Shell Workspace', content: "# You can evaluate shell commands in here\nls $PWD"}).getWindow().comeForward(); return true; }},
-    'lively.ide.openPythonWorkspace': {
-        description: 'open Python Workspace',
-        exec: function() {
-            var codeEditor = $world.addCodeEditor({
-                textMode: 'python',
-                title: 'Python Workspace',
-                content: "# You can evaluate Python code in here\n[(x, y) for x in [1,2,3] for y in [3,1,4] if x != y]\n    print [x,y]"
-            });
-            codeEditor.addScript(function doit(printResult, editor) {
-                var code = this.getSelectionOrLineString(),
-                    self = this;
-                Global.URL.nodejsBase.withFilename('PythonSubserver/eval').asWebResource().beAsync()
-                    .post(JSON.stringify({expr: code}), 'application/json')
-                    .withJSONWhenDone(function(json, status) { dealWithResult(json); });
-                
-                function dealWithResult(json) {
-                    var stdout = json.stdout.trim();
-                    var stderr = json.stderr.replace(/>>>/g, '').trim();
-                    var string = json.error ? String(json.error) + '\n' + stderr : stdout;
-                    if (!string.length && stderr.length) string = stderr;
-                    if (printResult) { self.printObject(editor, string); return; }
-                    if (json.error && lively.Config.get('showDoitErrorMessages') && self.world()) {
-                        self.world().alert(string);
-                    }
-                    var sel = self.getSelection();
-                    if (sel && sel.isEmpty()) sel.selectLine();
-                }
-            });
-            codeEditor.getWindow().comeForward();
-            return true;
-        }
-    },
     'lively.ide.openVersionsViewer': {description: 'open VersionsViewer', exec: function(path) { $world.openVersionViewer(path); return true; }},
     'lively.ide.openGitControl': {description: 'open GitControl', isActive: lively.ide.commands.helper.noCodeEditorActive, exec: function() { $world.openGitControl(); return true; }},
     'lively.ide.openServerLog': {description: 'open ServerLog', isActive: lively.ide.commands.helper.noCodeEditorActive, exec: function() { require('lively.ide.tools.ServerLog').toRun(function() { lively.ide.tools.ServerLog.open(); }); return true; }},
     'lively.ide.openDiffer': {description: 'open text differ', isActive: lively.ide.commands.helper.noCodeEditorActive, exec: function() { require('lively.ide.tools.Differ').toRun(function() { lively.BuildSpec('lively.ide.tools.Differ').createMorph().openInWorldCenter().comeForward(); }); return true; }},
+
+    "lively.tests.mocha.runAll": {
+      description: "run all mocha tests",
+      exec: function runMochaTests(thenDo, mochaSuites) {
+        lively.require('lively.MochaTests').toRun(function() {
+          if (mochaSuites) lively.MochaTests.run(mochaSuites)
+          else lively.MochaTests.runAll()
+        });
+        return true;
+      }
+    },
+    "lively.tests.mocha.reset": {
+      description: "reset mocha test suites",
+      exec: function runMochaTests(thenDo, mochaSuites) {
+        lively.require('lively.MochaTests').toRun(function() {
+          lively.MochaTests.registeredSuites = {};
+          alertOK("mocha tests resetted!")
+        });
+        return true;
+      }
+    },
+
     'lively.ide.showWikiFlap': {
         description: 'show wiki flap',
         exec: function(path) {
@@ -1400,7 +1390,7 @@ Object.extend(lively.ide.commands.byName, {
     'lively.net.lively2lively.openWorkspace': {description: 'open Lively2LivelyWorkspace', isActive: lively.ide.commands.helper.noCodeEditorActive, exec: function() { lively.require('lively.net.tools.Lively2Lively').toRun(function() { lively.BuildSpec("lively.net.tools.Lively2LivelyWorkspace").createMorph().openInWorldCenter().comeForward(); }); return true; }},
     'lively.net.lively2lively.listSessions': {
         description: 'list lively-2-lively sessions',
-        exec: function(withSelectedSessionDo) {
+        exec: function(withSelectedSessionDo, forceRefresh) {
 
             var foundCandidates = [];
 
@@ -1420,7 +1410,7 @@ Object.extend(lively.ide.commands.byName, {
                         if (candidates.length === 0) candidates = ['nothing found'];
                         foundCandidates = candidates;
                         callback(candidates);
-                    });
+                    }, forceRefresh);
             });
 
             function candidateBuilder(input, callback) {
@@ -1589,6 +1579,7 @@ Object.extend(lively.ide.commands.defaultBindings, { // bind commands to default
     'lively.ide.openDirViewer': 'Control-X D',
     'lively.ide.SystemCodeBrowser.browseModuleStructure': {mac: "m-s-t", win: 'm-s-t'},
     'lively.ide.commands.keys.reset': 'F8',
+    "lively.tests.mocha.runAll": "Control-C t",
     'lively.ide.tools.SelectionNarrowing.activateLastActive': "cmd-shift-y",
     'lively.morphic.Morph.openStyleEditor': "cmd-y",
     'lively.morphic.Halos.show': {mac: "cmd-h", win: 'ctrl-h'},

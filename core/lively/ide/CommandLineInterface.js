@@ -439,6 +439,17 @@ Object.extend(lively.ide.CommandLineInterface, {
         return cmd;
     },
 
+    getOut: function(commandString, options, thenDo) {
+      // lively lively.shell.run, except the command result will be tested for
+      // successful exit and the resultString() will be passed as 2. parameter to
+      // thenDo.
+      if (typeof options === "function") { thenDo = options; options = null; }
+      return lively.ide.CommandLineInterface.run(commandString, options, function(cmd) {
+        thenDo && thenDo(!cmd.getCode() ? null : new Error(cmd.getStderr()),
+                         cmd.resultString(true));
+      });
+    },
+
     exec: function(commandString, options, thenDo) {
         /*
         show(lively.ide.CommandLineInterface.exec('expr 1 + 2', {sync:true}).resultString());
@@ -526,6 +537,7 @@ Object.extend(lively.ide.CommandLineInterface, {
     },
 
     readFile: function(path, options, thenDo) {
+        if (typeof options === "function") { thenDo = options; options = null; }
         options = options || {};
         path = '"' + path + '"';
         var cmd = this.run('cat ' + path, options);
@@ -535,7 +547,15 @@ Object.extend(lively.ide.CommandLineInterface, {
         return cmd;
     },
 
+    cat: function(path, options, thenDo) {
+        // like readfile but with err, content callback isntead of cmd
+        if (typeof options === "function") { thenDo = options; options = null; }
+        return lively.ide.CommandLineInterface.readFile(path, options, function(cmd) {
+          thenDo && thenDo(cmd.getCode() ? new Error(cmd.getStderr()) : null, cmd.getStdout()); });
+    },
+
     writeFile: function(path, options, thenDo) {
+        if (typeof options === "string") options = {content: options};
         options = options || {};
         options.content = options.content || '';
         path = '"' + path + '"';
@@ -553,6 +573,16 @@ Object.extend(lively.ide.CommandLineInterface, {
             .get().whenDone(function(_, status) {
                 thenDo && thenDo(status.isSuccess() ? null : status);
             });
+    },
+
+    rm: function(path, thenDo) {
+      return lively.ide.CommandLineInterface.run("rm -rf " + path, {}, function(cmd) {
+        thenDo && thenDo(cmd.getCode() ? cmd.resultString(true) : null); });
+    },
+
+    ls: function(path, thenDo) {
+      return lively.ide.CommandLineSearch.findFiles("*", {cwd: path, depth: 1}, function(result) {
+        thenDo && thenDo(null, result); });
     },
 
     diffIgnoringWhiteSpace: function(string1, string2, thenDo) {
@@ -736,7 +766,7 @@ Object.extend(lively.ide.CommandLineSearch, {
     doBrowse: function(spec) {
         var modWrapper = lively.ide.sourceDB().addModule(spec.fileName),
             ff = modWrapper.ast();
-        if (spec.line) ff = ff.getSubElementAtLine(spec.line, 20/*depth*/) || ff;
+        if (spec.line && ff && ff.getSubElementAtLine) ff = ff.getSubElementAtLine(spec.line, 20/*depth*/) || ff;
         return ff && ff.browseIt({line: spec.line/*, browser: getCurrentBrowser()*/});
     },
 
