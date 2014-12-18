@@ -333,7 +333,7 @@ lively.morphic.Morph.subclass('lively.morphic.Image',
 },
 'initializing', {
     initialize: function($super, bounds, url, extentOptions, whenImageLoadedFunc) {
-        var imageShape = this.defaultShape(bounds.extent().extentAsRectangle());
+        var imageShape = this.defaultShape(bounds.extent().extentAsRectangle(), url);
         $super(imageShape);
         this.setPosition(bounds.topLeft());
         this.setImageURL(url, extentOptions, whenImageLoadedFunc);
@@ -2209,7 +2209,31 @@ lively.morphic.World.addMethods(
 
     editPrompt: function(message, callback, defaultInputOrOptions) {
         return this.openDialog(new lively.morphic.EditDialog(message, callback, defaultInputOrOptions))
-    }
+    },
+
+    selectMorphWithNextClick: function(options, thenDo) {
+        if (typeof options === "function") { thenDo = options; options = null; }
+        options = options || {};
+
+        lively.lang.fun.replaceMethodForOneCall($world, "onMouseDown", function(evt) {
+          onClick(); evt.stop(); return true; });
+        lively.lang.fun.replaceMethodForOneCall($world, "onMouseUp", function(evt) {
+          evt.stop(); return true; });
+
+        function onClick() {
+          var pos = $world.hand.getPosition(),
+              morphs = $world.morphsContainingPoint(pos).without($world)
+              .filter(function(ea) {
+                return ea.isVisible()
+                    && ea.ownerChain().every(function(owner) {
+                      return owner.isVisible(); })})
+          if (morphs.length === 0) return thenDo && thenDo(null, null);
+          if (options.useMenu)
+            lively.morphic.Menu.openAtHand("select morph",
+              morphs.map(function(ea) { return [String(ea), function() { thenDo && thenDo(null, ea); }]; }));
+          else thenDo && thenDo(null, morphs[0]);
+        }
+      }
 
 },
 'progress bar', {
