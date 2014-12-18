@@ -140,6 +140,13 @@ Object.subclass('lively.ide.CodeEditor.KeyboardShortcuts',
                 multiSelectAction: "forEach",
                 readOnly: true
             }, {
+                name: 'togglePrintitAsComment',
+                exec: function(ed, args) {
+                  ed.$morph.setPrintItAsComment(!ed.$morph.getPrintItAsComment());
+                },
+                multiSelectAction: "single",
+                handlesCount: true
+            }, {
                 name: 'doAutoEvalPrintItComments',
                 exec: function(ed, args) {
                     ed.$morph.doAutoEvalPrintItComments();
@@ -185,13 +192,14 @@ Object.subclass('lively.ide.CodeEditor.KeyboardShortcuts',
             }, {
                 name: 'runShellCommandOnRegion',
                 exec: function(ed, args) {
-                    var input = ed.$morph.getSelectionOrLineString();
-                    if (!input || input.length === 0) {
-                        show('Nothing to input into command, aborting...'); return; }
+                    var input = ed.session.getTextRange(),
+                        options = !input || input.length === 0 ? {} : {stdin: input};
                     $world.prompt('Enter shell command to run on region.', function(cmdString) {
                         if (!cmdString) { show('No command entered, aborting...!'); return; }
-                        lively.shell.run(cmdString, {stdin: input}, function(cmd) {
-                            ed.session.replace(ed.selection.getRange(), cmd.resultString(true));
+                        lively.shell.run(cmdString, options, function(cmd) {
+                            ed.session.replace(
+                              ed.selection.getRange(),
+                              cmd.resultString(true).trim());
                         });
                     }, {historyId: 'lively.ide.execShellCommand'});
                 },
@@ -405,7 +413,10 @@ Object.subclass('lively.ide.CodeEditor.KeyboardShortcuts',
 
                     // insert upper fence
                     ed.moveCursorTo(startLine, 0);
-                    ed.insert(Strings.indent(fence + '\n', ' ', indent));
+                    if (args && args.count)
+                      ed.insert(Strings.indent("-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-" + '\n', ' ', indent));
+                    else
+                      ed.insert(Strings.indent(fence + '\n', ' ', indent));
                     ed.selection.moveCursorUp();
                     ed.toggleCommentLines();
                     // insert fence below
@@ -419,7 +430,8 @@ Object.subclass('lively.ide.CodeEditor.KeyboardShortcuts',
                     // select it all
                     ed.selection.setRange({start: {row: startLine, column: 0}, end: ed.getCursorPosition()});
                 },
-                multiSelectAction: "forEach"
+                multiSelectAction: "forEach",
+                handlesCount: true
             }, {
                 name: 'curlyBlockOneLine',
                 exec: function(ed) {
@@ -649,6 +661,20 @@ Object.subclass('lively.ide.CodeEditor.KeyboardShortcuts',
             name: "multiSelectPrev",
             bindKey: "Ctrl-Shift-,",
             exec: function(ed) { ed.$morph.multiSelectPrev(); },
+            readOnly: true
+        }, {
+            name: "multiSelectJumpToPrevRange",
+            bindKey: "Command-Shift-,",
+            exec: function(ed) {
+              ed.$morph.multiSelectJump("prev");
+            },
+            readOnly: true
+        }, {
+            name: "multiSelectJumpToNextRange",
+            bindKey: "Command-Shift-.",
+            exec: function(ed) {
+              ed.$morph.multiSelectJump("next");
+            },
             readOnly: true
         }, {
             name: "selectAllLikeThis",
