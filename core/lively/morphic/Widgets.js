@@ -345,7 +345,7 @@ lively.morphic.Morph.subclass('lively.morphic.Image',
 },
 'accessing', {
     setImageURL: function(url, useNativeExtentOrOptions, thenDo) {
-        if (!url) { thenDo && thenDo(); return null };
+        if (!url) { thenDo && thenDo(null, this); return null };
 
         if (typeof useNativeExtentOrOptions === "function") {
           thenDo = useNativeExtentOrOptions; useNativeExtentOrOptions = null;
@@ -387,7 +387,7 @@ lively.morphic.Morph.subclass('lively.morphic.Image',
             self.setExtent(ext);
           }
         
-          thenDo && thenDo();
+          thenDo && thenDo(null, self);
         }
     },
     getImageURL: function() { return this.shape.getImageURL() },
@@ -456,6 +456,7 @@ lively.morphic.Morph.subclass('lively.morphic.Image',
     }
 },
 'inline image', {
+
     convertToBase64: function() {
         var urlString = this.getImageURL(),
             type = urlString.substring(urlString.lastIndexOf('.') + 1, urlString.length);
@@ -478,7 +479,7 @@ lively.morphic.Morph.subclass('lively.morphic.Image',
             }
             lively.require('lively.ide.CommandLineInterface').toRun(function() { // FIXME
                 var cmd = 'curl --silent "' + urlString + '" | openssl base64'
-                lively.ide.CommandLineInterface.exec(cmd, function(cmd) {
+                lively.ide.CommandLineInterface.exec(cmd, function(err, cmd) {
                     image.setImageURL('data:image/' + type + ';base64,' + cmd.getStdout());
                 });
             });
@@ -2221,7 +2222,7 @@ lively.morphic.World.addMethods(
           evt.stop(); return true; });
 
         function onClick() {
-          var pos = $world.hand.getPosition(),
+          var pos = $world.firstHand().getPosition(),
               morphs = $world.morphsContainingPoint(pos).without($world)
               .filter(function(ea) {
                 return ea.isVisible()
