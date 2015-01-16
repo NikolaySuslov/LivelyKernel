@@ -74,7 +74,7 @@ lively.morphic.Morph.subclass('lively.morphic.CodeEditor',
         showWarnings: Config.get('aceDefaultShowWarnings'),
         showErrors: Config.get('aceDefaultShowErrors')
     },
-    doNotSerialize: ['_aceInitialized', 'aceEditor', 'aceEditorAfterSetupCallbacks', 'savedTextString', 'storedString'],
+    doNotSerialize: ['_aceInitialized', 'aceEditor', 'aceEditorAfterSetupCallbacks', 'savedTextString', 'storedString', '_statusMorph'],
     _aceInitialized: false,
     evalEnabled: false,
     isAceEditor: true,
@@ -731,7 +731,91 @@ lively.morphic.Morph.subclass('lively.morphic.CodeEditor',
     },
 
     doKeyCopy: Functions.Null,
-    doKeyPaste: Functions.Null
+    doKeyPaste: Functions.Null,
+
+    commandKeyName: function() {
+      return !!UserAgent.isMacOS ? "command" : "ctrl";
+    },
+
+    showEffectiveKeybindings: function() {
+      return this.withAceDo(function(ed) {
+        var all = ace.ext.keys.allEditorCommands(ed);
+        var cmdNames = Object.keys(all).sort();
+        var spec = cmdNames.reduce(function(spec, cmdName) {
+          var boundCommands = all[cmdName];
+          var keys = boundCommands
+            .map(function(ea) { return ea.key.include("input") ? null : ea.key; })
+            .uniq().compact().join("|");
+          if (!keys.length) return spec;
+          spec[cmdName] = keys
+          return spec;
+        }, {});
+        var winEd = $world.addCodeEditor({
+          title: "bound keys",
+          content: JSON.stringify(spec, null, 2),
+          textMode: "json"
+        });
+        winEd.setInputAllowed(false);
+        winEd.getWindow().comeForward();
+        return winEd;
+        // -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+        // var colWidth = cmdNames.reduce(function(colWidth, cmdName) {
+        //   return Math.max(cmdName.length, colWidth); }, 0);
+        // var spec = cmdNames.reduce(function(spec, cmdName) {
+        //   var boundCommands = all[cmdName];
+        //   var keys = boundCommands
+        //     .map(function(ea) { return ea.key.include("input") ? null : ea.key; })
+        //     .uniq().compact().join("|");
+        //   var string = lively.lang.string.pad(cmdName, colWidth+1-cmdName.length, false) + keys;
+        //   return spec.concat([
+        //       [string, {type: "text", boundCommands: boundCommands}],
+        //       ["\n"]])
+        // }, [])
+        //
+        // var winEd = $world.addCodeEditor({
+        //   title: "bound keys",
+        //   content: "",
+        //   textMode: "attributedtext"
+        // });
+        // winEd.setInputAllowed(false);
+        // winEd.withAceDo(function(ed) { ed.session.getMode().set(ed, spec); })
+        // winEd.getWindow().comeForward();
+        // return winEd;
+      });
+    },
+
+    customizeKeybindingsInteractively: function() {
+      var existing = ace.ext.keys.getKeyCustomizationLayer("user-key-bindings") || {commandKeyBinding: {}};
+      var editor = $world.addCodeEditor({
+        title: "user key customizations",
+        content: (JSON.stringify(existing, null, 2)),
+        textMode: "json",
+      });
+      
+      editor.setStatusMessage("Press " + this.commandKeyName() + "-s to save\n"
+                            + "customizations should have the form\n{\"command-name\": \"key\"}\n", null, 10);
+
+      editor.addScript(function doSave() {
+        var key = "user-key-bindings";
+        var s = this.textString;
+        if (!s.length) {
+          ace.ext.keys.removeKeyCustomizationLayer(key, cust);
+          lively.LocalStorage.remove(key);
+          this.setStatusMessage("User key customization removed");
+        } else {
+          try {
+            var cust = JSON.parse(this.textString);
+            if (!cust.priority) cust.priority = 100;
+            ace.ext.keys.addKeyCustomizationLayer(key, cust);
+            lively.LocalStorage.set(key, JSON.stringify(cust));
+            this.setStatusMessage("user key customization saved");
+          } catch (e) {
+            this.setStatusMessage("Error setting key customization:\n"+e, Color.red);
+          }
+        }
+      });
+    }
 },
 'text morph eval interface', {
 
@@ -1564,15 +1648,21 @@ lively.morphic.Morph.subclass('lively.morphic.CodeEditor',
     }
 },
 'rendering', {
-    setClipMode: Functions.Null
+    setClipMode: Functions.Null,
+    
+    onOwnerChanged: function($super, newOwner) {
+      if (!newOwner && this._statusMorph) this._statusMorph.remove();
+      return $super(newOwner);
+    }
 },
 'morph menu', {
     codeEditorMenuItems: function() {
         var editor = this, items = [], self = this, world = this.world(),
             range = this.getSelectionRangeAce(),
-            mode = this.getTextMode();
+            mode = this.getTextMode(),
+            isJs = mode.match(/javascript/);
         
-        if (mode.match(/javascript/)) {
+        if (isJs) {
           // eval marker
           var evalMarkerItems = ['eval marker', []];
           items.push(evalMarkerItems);
@@ -1650,9 +1740,6 @@ lively.morphic.Morph.subclass('lively.morphic.CodeEditor',
                                                  mode);
                 return [modeString, function(evt) { editor.setTextMode(mode); }]; });
 
-        items.push(["themes", themeItems]);
-        items.push(["modes", modeItems]);
-
         // -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
         function boolItem(itemSpec, items) {
             var enabled = editor["get"+itemSpec.name]();
@@ -1661,6 +1748,10 @@ lively.morphic.Morph.subclass('lively.morphic.CodeEditor',
             items.push(item);
         }
         var settingsItems = [];
+        settingsItems.push(['Show effective keybindings', function() { self.showEffectiveKeybindings(); }]);
+        settingsItems.push(['Customize keybindings', function() { self.customizeKeybindingsInteractively(); }]);
+        settingsItems.push(["themes", themeItems]);
+        settingsItems.push(["modes", modeItems]);
         boolItem({name: "ShowGutter", menuString: "show line numbers"}, settingsItems);
         boolItem({name: "ShowInvisibles", menuString: "show whitespace"}, settingsItems);
         boolItem({name: "ShowPrintMargin", menuString: "show print margin"}, settingsItems);
@@ -1677,8 +1768,10 @@ lively.morphic.Morph.subclass('lively.morphic.CodeEditor',
         boolItem({name: "ShowWarnings", menuString: "show warnings"}, settingsItems);
         boolItem({name: "ShowErrors", menuString: "show Errors"}, settingsItems);
         boolItem({name: "AutocompletionEnabled", menuString: "use Autocompletion"}, settingsItems);
-        boolItem({name: "PrintItAsComment", menuString: "printIt as comment"}, settingsItems);
-        boolItem({name: "AutoEvalPrintItComments", menuString: "re-evaluate printIt comments"}, settingsItems);
+        if (isJs) {
+          boolItem({name: "PrintItAsComment", menuString: "printIt as comment"}, settingsItems);
+          boolItem({name: "AutoEvalPrintItComments", menuString: "re-evaluate printIt comments"}, settingsItems);
+        }
         items.push(['settings', settingsItems]);
 
         var mac = UserAgent.isMacOS;
@@ -1695,11 +1788,14 @@ lively.morphic.Morph.subclass('lively.morphic.CodeEditor',
                 if (options.focusAfter) editor.focus();
             }]);
         }
+        
         cmdBinding({name: 'save', cmdName: 'doSave', shortcut: {win: 'CTRL-s', mac: 'CMD-s'}});
-        cmdBinding({name: 'property completion', cmdName: 'list protocol', shortcut: {win: 'CTRL-P', mac: 'CMD-P'}});
-        cmdBinding({name: 'inspect', cmdName: 'doInspect', shortcut: {win: 'CTRL-I', mac: 'CMD-I'}});
-        cmdBinding({name: 'printit', shortcut: {win: 'CTRL-p', mac: 'CMD-p'}});
-        cmdBinding({name: 'doit', shortcut: {win: 'CTRL-d', mac: 'CMD-d'}});
+        if (isJs) {
+          cmdBinding({name: 'property completion', cmdName: 'list protocol', shortcut: {win: 'CTRL-P', mac: 'CMD-P'}});
+          cmdBinding({name: 'inspect', cmdName: 'doInspect', shortcut: {win: 'CTRL-I', mac: 'CMD-I'}});
+          cmdBinding({name: 'printit', shortcut: {win: 'CTRL-p', mac: 'CMD-p'}});
+          cmdBinding({name: 'doit', shortcut: {win: 'CTRL-d', mac: 'CMD-d'}});
+        }
 
         // -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
         // modes
@@ -1724,37 +1820,62 @@ lively.morphic.Morph.subclass('lively.morphic.CodeEditor',
 },
 'messaging', {
     setStatusMessage: function (msg, color, delay) {
-        console.log("%s status: %s", this, msg)
         var world = this.world();
         if (!world) return;
-        var sm = this._statusMorph;
+        var self = this, sm = this._statusMorph,
+            ext = this.getExtent();
+
+        // create if not there yet. Note that every editor gets its own message
+        // morph but that the message morph will be a submorph of world
         if (!sm) {
-            this._statusMorph = sm = new lively.morphic.Text(this.getExtent().withY(80).extentAsRectangle());
+            this._statusMorph = sm = new lively.morphic.Text(ext.withY(80).extentAsRectangle());
             sm.applyStyle({
                 fontFamily: 'Monaco,monospace',
                 borderWidth: 0, borderRadius: 6,
-                fill: Color.gray.lighter(),
-                fontSize: this.getFontSize() + 1,
-                fixedWidth: true, fixedHeight: false
+                fontSize: this.getFontSize()-2,
+                inputAllowed: false,
+                fixedWidth: true, fixedHeight: false,
             });
             sm.isEpiMorph = true;
-            this._sm = sm;
         }
-        sm.textString = msg;
-        sm.ignoreEvents();
+
+        // setting 'da message
+        if (Array.isArray(msg)) sm.setRichTextMarkup(msg);
+        else sm.textString = msg;
+        sm.lastUpdated = Date.now();
         world.addMorph(sm);
+        var color = color || Color.white;
+        var fill = (color === Color.green || color === Color.red) ? Color.white : Color.black.lighter()
         sm.applyStyle({
-            textColor: color || Color.black,
+            textColor: color, fill: fill,
             position: this.worldPoint(this.innerBounds().bottomLeft()),
         });
+
+        // aligning
         sm.fit();
         (function() {
-            var world = sm.world(), visibleBounds = world.visibleBounds(),
-                overlapY = sm.bounds().bottom() - visibleBounds.bottom();
-            if (overlapY > 0) sm.moveBy(pt(0, -overlapY));
+          var visibleBounds = world.visibleBounds(),
+              overlapY = sm.bounds().bottom() - visibleBounds.bottom();
+          if (overlapY > 0) sm.moveBy(pt(0, -overlapY));
+          sm.setExtent(sm.getExtent().withX(ext.x));
         }).delay(0);
-        if (sm._removeTimer) clearTimeout(sm._removeTimer);
-        sm._removeTimer = setTimeout(sm.remove.bind(sm), 1000*(delay||4))
+
+        // either remove via timeout or when curs/selection changes occur. Note
+        // that via onOwnerChanged the statusMorph also is removed when the
+        // editors owner is null
+        (function() {
+          function removeStatusMessage() {
+            sm.remove();
+            self.withAceDo(function(ed) { ed.off("changeSelection", removeStatusMessage); })
+          }
+        
+          if (sm._removeTimer) clearTimeout(sm._removeTimer);
+          if (typeof delay === "number") {
+            sm._removeTimer = setTimeout(removeStatusMessage, 1000*delay)
+          } else {
+            self.withAceDo(function(ed) { ed.once("changeSelection", removeStatusMessage); });
+          }
+        }).delay(0);
     },
     hideStatusMessage: function () {
         if (this._statusMorph && this._statusMorph.owner) this._statusMorph.remove();
