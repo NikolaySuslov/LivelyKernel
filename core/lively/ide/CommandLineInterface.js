@@ -286,7 +286,7 @@ lively.ide.CommandLineInterface.Command.subclass('lively.ide.CommandLineInterfac
 },
 'internal', {
     getCommand: function() {
-        return ["/usr/bin/env", "bash", "-c", this._commandString];
+        return this._commandString;
     },
 
     startServerIDLookup: function() {
@@ -338,6 +338,14 @@ lively.ide.CommandLineInterface.Command.subclass('lively.ide.CommandLineInterfac
 Object.extend(lively.ide.CommandLineInterface, {
 
     rootDirectory: null,
+
+    WORKSPACE_LK: (function() {
+      lively.ide.CommandLineInterface.run("echo $WORKSPACE_LK", {}, function(err, cmd) {
+        if (!cmd.getCode()) lively.ide.CommandLineInterface.WORKSPACE_LK = cmd.getStdout().trim();
+      })
+      return null;
+    }).delay(0),
+
     commandQueue: {},
 
     reset: function() {
@@ -544,9 +552,15 @@ Object.extend(lively.ide.CommandLineInterface, {
         } catch(e) { return ''; }
     },
 
-    setWorkingDirectory: function(dir) { return this.rootDirectory = dir; },
+    setWorkingDirectory: function(dir) {
+      this.rootDirectory = dir
+      lively.bindings.signal(lively.shell, 'currentDirectory', dir);
+      return dir;
+    },
 
     cwd: function() { return this.rootDirectory || this.getWorkingDirectory(); },
+
+    cwdIsLivelyDir: function() { return !this.rootDirectory || this.cwd() === this.WORKSPACE_LK; },
 
     makeAbsolute: function(path) {
         var isAbsolute = !!(path.match(/^\s*[a-zA-Z]:\\/) || path.match(/^\s*\/.*/));
@@ -556,6 +570,12 @@ Object.extend(lively.ide.CommandLineInterface, {
             baseDir = lively.shell.cwd(),
             needsSep = baseDir[baseDir.length-1] !== sep && path[0] !== sep;
         return baseDir + (needsSep ? '/' : '') + path;
+    },
+
+    normalizePath: function(path, thenDo) {
+      this.run(lively.lang.string.format('echo `cd "%s"; pwd`;', path), {}, function(err, cmd) {
+        thenDo(err, err ? null : cmd.getStdout().trim());
+      });
     },
 
     readFile: function(path, options, thenDo) {
@@ -758,7 +778,8 @@ Object.extend(lively.ide.CommandLineSearch, {
         if (!fullPath.length) fullPath = './core/';
         if (fullPath.endsWith('/')) fullPath = fullPath.slice(0,-1);
         var excludes = "-iname " + lively.Config.codeSearchGrepExclusions.map(Strings.print).join(' -o -iname '),
-            baseCmd = 'find %s \( %s -o -size +1M \) -prune -o -type f -a \( -iname "*.js" -o -iname "*.jade" -o -iname "*.css" -o -iname "*.json" \) -print0 | xargs -0 grep -inH -o ".\\{0,%s\\}%s.\\{0,%s\\}" ',
+            // baseCmd = 'find %s \( %s -o -size +1M \) -prune -o -type f -a \( -iname "*.js" -o -iname "*.jade" -o -iname "*.css" -o -iname "*.json" \) -print0 | xargs -0 grep -inH -o ".\\{0,%s\\}%s.\\{0,%s\\}" ',
+            baseCmd = 'find %s \( %s -o -size +1M \) -prune -o -type f -a -print0 | xargs -0 grep -IinH -o ".\\{0,%s\\}%s.\\{0,%s\\}" ',
             platform = lively.ide.CommandLineInterface.getServerPlatform();
         if (platform !== 'win32') {
             baseCmd = baseCmd.replace(/([\(\);])/g, '\\$1');

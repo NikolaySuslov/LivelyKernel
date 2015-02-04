@@ -887,6 +887,7 @@ lively.morphic.Box.subclass('lively.morphic.Menu',
             return {
                 isMenuItem: true,
                 isListItem: true,
+                isDivider: false,
                 isSubMenu: isSubMenu,
                 string: string,
                 value: value,
@@ -1180,7 +1181,8 @@ lively.morphic.Text.subclass("lively.morphic.MenuItem",
     initialize: function($super, item) {
         $super(new Rectangle(0,0, 20, 23), item.string);
         this.item = item;
-        if (item.isSubMenu) this.addArrowMorph();
+        if (item.isDivider) this.showDivider();
+        else if (item.isSubMenu) this.addArrowMorph();
     },
 
     addArrowMorph: function() {
@@ -1190,12 +1192,21 @@ lively.morphic.Text.subclass("lively.morphic.MenuItem",
         arrowMorph.setPosition(pt(extent.x, 0));
         arrowMorph.applyStyle(this.getStyle());
         this.arrow = this.addMorph(arrowMorph);
+    },
+    
+    showDivider: function() {
+      this.setExtent(pt(20, 3));
+      this.textString = "";
+      this.applyStyle({
+        borderWidth: 2, borderColor: Color.gray.lighter(),
+        padding: Rectangle.inset(0), align: "center"})
     }
 },
 'mouse events', {
 
     onMouseOver: function(evt) {
         // Selects a new menu option
+        if (this.item.isDivider) return false;
         this.owner.overItemMorph = this;
         this.owner.itemMorphs.without(this).invoke('deselect');
         if (this.isSelected) return false;
@@ -1913,7 +1924,6 @@ lively.morphic.World.addMethods(
 
     addActionText: function(actionSpec, options) {
       options = lively.lang.obj.merge(options || {}, {textMode: "attributedtext"});
-      show(options)
       var ed = $world.addCodeEditor(options);
       ed.addScript(function setAttributedText(textSpec) {
         // textSpec like [["string", {type: "tokenType", onClick: ..., commands: ...}}]]
@@ -2496,13 +2506,30 @@ lively.morphic.Box.subclass("lively.morphic.TitleBar",
 
 },
 'event handling', {
+    showResizeMenu: function() {
+        var win = this.getWindow(), world = this.world(), items = [];
+        items.pushAll(["full","left","center","right","top","bottom", "reset"].map(function(how) {
+            return [how, function() {
+              lively.ide.commands.exec('lively.ide.resizeWindow', how, win);
+              win.comeForward();
+            }];
+        }));
+        lively.morphic.Menu.openAtHand("Resize window (Alt-F1)", items);
+    },
+
     onMouseDown: function (evt) {
         //Functions.False,
         // TODO: refactor to evt.hand.clickedOnMorph when everything else is ready for it
         evt.hand.clickedOnMorph = this.windowMorph;
         evt.world.clickedOnMorph = this.windowMorph;
     },
-    onMouseUp: Functions.False
+    onMouseUp: function(evt) {
+      if (evt.isRightMouseButtonDown() || (UserAgent.isMacOS && evt.isCtrlDown())) {
+        this.showResizeMenu();
+        evt.stop(); return;
+      }
+      return false;
+    }
 });
 
 lively.morphic.Morph.subclass('lively.morphic.Window', Trait('lively.morphic.DragMoveTrait').derive({override: ['onDrag','onDragStart', 'onDragEnd']}),
@@ -2851,7 +2878,7 @@ lively.morphic.Morph.subclass('lively.morphic.Window', Trait('lively.morphic.Dra
         }
         this.withCSSTransitionForAllSubmorphsDo(finExpand, 250, function() {
             self.comeForward();
-            self.targetMorph.onWindowExpand && self.targetMorph.onWindowExpand();
+            self.withAllSubmorphsDo(function(ea) { return ea.onWindowExpand && ea.onWindowExpand(this); });
         });
     }
 
@@ -3857,50 +3884,6 @@ Trait('SelectionMorphTrait',
     }
 })
 .applyTo(lively.morphic.World, {override: ['onDrag', 'onDragStart', 'onDragEnd']});
-
-module('lively.ide'); // so that the namespace is defined even if ide is not loaded
-
-Object.extend(lively.ide, {
-    openFile: function (url, whenDone) {
-        lively.require('lively.ide.tools.TextEditor').toRun(function() {
-            var editor = lively.BuildSpec('lively.ide.tools.TextEditor').createMorph();
-            if (url) {
-                if (String(url).match(/^(\/|.:\\)/)) {
-                    // absolute local path
-                } else if (!String(url).startsWith('http')) {
-                    url = URL.root.withFilename(url).withRelativePartsResolved();
-                }
-                editor.openURL(url);
-            }
-            editor.openInWorld($world.positionForNewMorph(editor)).comeForward();
-            typeof whenDone === 'function' && whenDone(editor);
-        });
-    },
-
-    openFileAsEDITOR: function (file, whenEditDone) {
-        lively.ide.openFile(file, function(editor) {
-            editor.closeVetoed = false;
-            editor.wasStored = false;
-
-            lively.bindings.connect(editor, 'contentStored', whenEditDone, 'call', {
-                updater: function($upd) {
-                    var editor = this.sourceObj;
-                    editor.wasStored = true;
-                    editor.initiateShutdown();
-                    $upd(null,null, "saved");
-                }
-            });
-
-            editor.onOwnerChanged = function(owner) {
-                if (this.wasStored) return;
-                this.closeVetoed = !!owner;
-                if (!this.wasStored && !this.closeVetoed) whenEditDone(null, 'aborted');
-            };
-        });
-    }
-
-});
-
 
 lively.morphic.Box.subclass('lively.morphic.HorizontalDivider',
 'settings', {

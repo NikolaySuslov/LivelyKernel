@@ -738,6 +738,7 @@ lively.morphic.Box.subclass('lively.morphic.List',
             listItemContainer.applyStyle({adjustForNewBounds: true, resizeWidth: true});
             listItemContainer.submorphs.forEach(function(ea) { ea.applyStyle({resizeWidth: true})})
         }
+        this.updateView();
         $super();
     },
 
@@ -793,8 +794,11 @@ lively.morphic.Box.subclass('lively.morphic.List',
         scroll.setBounds(lively.rect(0,0,
             this.getExtent().x-scrollbarExtent.x,
             layout.listItemHeight*noOfItems+4));
-    }
+    },
 
+    onWindowExpand: function() {
+      this.updateView();
+    }
 },
 'accessing', {
     get selectedLineNo() {

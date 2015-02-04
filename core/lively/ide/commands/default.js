@@ -558,7 +558,7 @@ Object.extend(lively.ide.commands.byName, {
                 {name: 'open in versions viewer', exec: function(candidate) { lively.ide.commands.exec("lively.ide.openVersionsViewer", candidate.relativePath); }},
                 {name: 'reset directory watcher', exec: function(candidate) { lively.ide.DirectoryWatcher.reset(); }}];
 
-            if (lively.ide.CommandLineInterface.rootDirectory) {
+            if (!lively.shell.cwdIsLivelyDir()) {
                 // SCB is currently only supported for Lively files
                 actions.shift();
             }
@@ -1596,14 +1596,8 @@ Object.extend(lively.ide.commands.defaultBindings, { // bind commands to default
     'lively.morphic.Morph.copy': {mac: 'cmd-s-l c o p y', win: 'ctrl-s-l c o p y'},
     'lively.morphic.Morph.showSceneGraph': 'm-m',
     'lively.ide.evalJavaScript': 'm-s-:',
-    'lively.ide.WindowNavigation.start': {mac: ["Command-F3", "Command-`", "Command-1"], win: ["Alt-À"]},
-    'lively.ide.resizeWindow.reset': {mac: "cmd-s-l r e s q", win: "ctrl-s-l r e s q"},
-    'lively.ide.resizeWindow.full': {mac: "cmd-s-l r e s f", win: "ctrl-s-l r e s f"},
-    'lively.ide.resizeWindow.left': {mac: "cmd-s-l r e s l", win: "ctrl-s-l r e s l"},
-    'lively.ide.resizeWindow.center': {mac: "cmd-s-l r e s c", win: "ctrl-s-l r e s c"},
-    'lively.ide.resizeWindow.right': {mac: "cmd-s-l r e s r", win: "ctrl-s-l r e s r"},
-    'lively.ide.resizeWindow.top': {mac: "cmd-s-l r e s t", win: "ctrl-s-l r e s t"},
-    'lively.ide.resizeWindow.bottom': {mac: "cmd-s-l r e s b", win: "ctrl-s-l r e s b"},
+    'lively.ide.WindowNavigation.start': {mac: ["Command-F3", "Command-`", "Command-1", "Alt-À","Alt-à", "Alt-`"], win: ["Alt-à","Alt-À", "Alt-`"]},
+    'lively.ide.resizeWindow': 'Alt-F1',
     'lively.ide.browseFiles': 'Alt-t',
     'lively.ide.findFile': {mac: ['Control-X F', 'Control-X Control-F'], win: ['Control-X F', 'Control-X Control-F']},
     'lively.ide.openDirViewer': 'Control-X D',
@@ -1615,7 +1609,7 @@ Object.extend(lively.ide.commands.defaultBindings, { // bind commands to default
     'lively.morphic.Halos.show': {mac: "cmd-h", win: 'ctrl-h'},
     'lively.morphic.List.selectItem': "m-space",
     'lively.ide.codeSearch': {mac: ["Command-Shift-C", "Command-Shift-F"], win: ["Control-Shift-C", 'Control-Shift-G', 'Control-Shift-F']},
-    'lively.ide.execShellCommandInWindow': "m-s-!",
+    'lively.ide.execShellCommandInWindow': ["Alt-Shift-!", "Alt-Shift-1"],
     "lively.ide.CommandLineInterface.SpellChecker.spellCheckWord": "m-s-$",
     'lively.ide.commands.execute': "m-x",
     // normally browser fwd/bwd shortcut:

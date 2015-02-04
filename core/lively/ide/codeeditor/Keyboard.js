@@ -13,6 +13,12 @@ Object.subclass('lively.ide.CodeEditor.KeyboardShortcuts',
         codeEditor.withAceDo(function(ed) {
             var kbd = ed.getKeyboardHandler();
             // if (kbd.hasLivelyKeys) return;
+
+            if (!lively.Config.get("useEmacsyKeys") && module('lively.ide.codeeditor.EmacsConfig').isLoaded()) {
+              lively.ide.codeeditor.EmacsConfig.disable(ed);
+              kbd = ed.getKeyboardHandler();
+            }
+
             // so that mutli key shortcuts can be transfered from the global
             // key handler:
             ed.keyBinding.$data.keyChain = "";
@@ -29,7 +35,21 @@ Object.subclass('lively.ide.CodeEditor.KeyboardShortcuts',
             self.setupToolSpecificBindings(kbd);
             self.setupUsefulHelperBindings(kbd);
             self.setupJumpChar(kbd);
+
+            if (lively.Config.get("useEmacsyKeys")) {
+              require('lively.ide.codeeditor.EmacsConfig').toRun(function() {
+                lively.ide.codeeditor.EmacsConfig.enable(ed)
+              });
+            }
+
+            if (lively.Config.get("aceDefaultUseIyGotoChar")) {
+              require('lively.ide.codeeditor.IyGotoChar').toRun(function() {
+                lively.ide.codeeditor.IyGotoChar.setupIyGoToChar(kbd);
+              });
+            }
+
             self.setupUserKeyBindings(kbd, codeEditor);
+
             kbd.hasLivelyKeys = true;
         });
     },
@@ -794,31 +814,33 @@ Object.subclass('lively.ide.CodeEditor.KeyboardShortcuts',
             }, {
                 name: "describeKey",
                 exec: function(ed) {
-                    function uninstall() {
-                        commandExecHandler && ed.commands.removeEventListener('exec', commandExecHandler);
-                        ed.keyBinding.$callKeyboardHandlers = ed.keyBinding.$callKeyboardHandlers.getOriginal();
-                    }
-                    var origCallKeyboardHandlers = ed.keyBinding.$callKeyboardHandlers,
-                        lastKeys = [],
-                        commandExecHandler = ed.commands.addEventListener('exec', function(e) {
-                            uninstall();
-                            e.stopPropagation(); e.preventDefault();
-                            $world.addCodeEditor({
-                                title: 'describe key "' + lastKeys.join(' ') + '"',
-                                content: Strings.format('"%s" is bound to\n%s',
-                                    lastKeys.join(' '), Objects.inspect(e.command)),
-                                textMode: 'text'
-                            });
-                            return true;
-                        });
-                    ed.keyBinding.$callKeyboardHandlers = ed.keyBinding.$callKeyboardHandlers.wrap(function(proceed, hashId, keyString, keyCode, e) {
-                        if (e) {
-                            lively.morphic.EventHandler.prototype.patchEvent(e);
-                            lastKeys.push(e.getKeyString({ignoreModifiersIfNoCombo: true}));
-                        }
-                        return proceed(hashId, keyString, keyCode, e);
+                  var lastKeys = [], found = false;
+                  var reset = ace.ext.keys.captureEditorCommand(ed,
+                    function(cmd) { withResultDo(null, cmd); },
+                    function(hashId, keyString, keyCode, e) {
+                      if (e) {
+                          lively.morphic.EventHandler.prototype.patchEvent(e);
+                          lastKeys.push(e.getKeyString({ignoreModifiersIfNoCombo: true}));
+                      }
                     });
-                    ed.showCommandLine("Press key(s) to find out what command the key is bound to");
+                  ed.$morph.setStatusMessage("Press key(s) to find out what command the key is bound to");
+
+                  lively.lang.fun.waitFor(15*1000, function() { return !!found; },
+                    function(timeout) {
+                      if (!timeout) return;
+                      reset();
+                      ed.$morph.hideStatusMessage();
+                    })
+
+                  function withResultDo(err, cmd) {
+                    found = true;
+                    $world.addCodeEditor({
+                        title: 'describe key "' + lastKeys.join(' ') + '"',
+                        content: Strings.format('"%s" is bound to\n%s',
+                            lastKeys.join(' '), Objects.inspect(cmd)),
+                        textMode: 'text'
+                    }).getWindow().comeForward();
+                  }
                 }
             }]);
     },
@@ -1058,10 +1080,60 @@ Object.extend(lively.ide.CodeEditor.KeyboardShortcuts, {
   // user key bindings
   try {
     var cust = JSON.parse(lively.LocalStorage.get("user-key-bindings"));
-    if (cust) ace.ext.keys.addKeyCustomizationLayer("user-key-bindings", cust);
+    ace.ext.keys.addKeyCustomizationLayer("user-key-bindings", cust || {});
+    var h = ace.require("ace/keyboard/keybinding").KeyBinding.prototype["ace.ext.keys.customized"].detect(function(ea) { return ea.layerName === "user-key-bindings"; })
+
+    if (h) {
+      h.handleKeyboard = h.handleKeyboard.getOriginal().wrap(function (proceed, data, hashId, keyString, keyCode) {
+        // show(ace.require("ace/lib/keys").KEY_MODS[hashId]+keyString);
+        var cmd = proceed(data, hashId, keyString, keyCode);
+        if (!cmd || !cmd.command || !cmd.command.startsWith("global:")) return cmd;
+        var name = cmd.command.replace('global:', "");
+        var globalCommand = lively.ide.commands.byName[name];
+        if (!globalCommand) return cmd;
+        if (!data.editor.commands[name]) {
+          data.editor.commands.addCommand({
+            name: name, exec: function(ed, args) { lively.ide.commands.exec(name, args); },
+          })
+        }
+        return lively.lang.obj.merge(cmd, {command: name});
+      });
+    }
+
   } catch (e) {
     console.error("Error setting ace user keys:\n" + e);
   }
+})();
+
+
+(function initializeKeyboardRelatedAceSettings() {
+
+  // -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+  // no Ctrl-Shift-Space
+  ace.require("ace/autocomplete").Autocomplete.startCommand.bindKey = "Ctrl-Space|Alt-Shift-Space|Alt-Space";
+
+  // -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+  // tabs
+  var tabSize = lively.Config.get('defaultTabSize');
+  module("lively.ide.CodeEditor").runWhenLoaded(function() {
+    lively.morphic.CodeEditor.prototype.style.tabSize = tabSize; });
+
+  // -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+  // make paren behavior the default in all modes:
+  lively.module('lively.ide.codeeditor.ace').runWhenLoaded(function() {
+      lively.ide.ace.require('ace/mode/text').Mode.addMethods({
+          // FIXME just overwriting $behaviour property in mode prototype isn't
+          // enough because the mode constructor unfortunately sets the behavior
+          // directly. So we also delete the ownProperty behavior in attach
+          $behaviour: new (lively.ide.ace.require("ace/mode/behaviour/cstyle").CstyleBehaviour)(),
+          attach: function(ed) {
+              // replace "Null-Behavior" only
+              if (this.$behaviour && this.$behaviour.constructor === lively.ide.ace.require("ace/mode/behaviour").Behaviour)
+                  delete this.$behaviour;
+          }
+      });
+  });
+
 })();
 
 }) // end of module

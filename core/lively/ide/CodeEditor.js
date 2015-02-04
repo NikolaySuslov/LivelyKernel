@@ -792,7 +792,7 @@ lively.morphic.Morph.subclass('lively.morphic.CodeEditor',
         content: (JSON.stringify(existing, null, 2)),
         textMode: "json",
       });
-      
+
       editor.setStatusMessage("Press " + this.commandKeyName() + "-s to save\n"
                             + "customizations should have the form\n{\"command-name\": \"key\"}\n", null, 10);
 
@@ -1649,7 +1649,7 @@ lively.morphic.Morph.subclass('lively.morphic.CodeEditor',
 },
 'rendering', {
     setClipMode: Functions.Null,
-    
+
     onOwnerChanged: function($super, newOwner) {
       if (!newOwner && this._statusMorph) this._statusMorph.remove();
       return $super(newOwner);
@@ -1661,7 +1661,7 @@ lively.morphic.Morph.subclass('lively.morphic.CodeEditor',
             range = this.getSelectionRangeAce(),
             mode = this.getTextMode(),
             isJs = mode.match(/javascript/);
-        
+
         if (isJs) {
           // eval marker
           var evalMarkerItems = ['eval marker', []];
@@ -1703,7 +1703,7 @@ lively.morphic.Morph.subclass('lively.morphic.CodeEditor',
           }
           evalMarkerItems[1].push(['Remove eval marker', function() {
               self.removeEvalMarker(); }]);
-  
+
           var marker = lively.morphic.CodeEditorEvalMarker.currentMarker;
           if (marker) {
               if (marker.doesContinousEval()) {
@@ -1744,14 +1744,15 @@ lively.morphic.Morph.subclass('lively.morphic.CodeEditor',
         function boolItem(itemSpec, items) {
             var enabled = editor["get"+itemSpec.name]();
             var item = [Strings.format("[%s] " + itemSpec.menuString, enabled ? 'X' : ' '), function() {
-                editor['set'+itemSpec.name](!enabled); }].concat()
+                editor['set'+itemSpec.name](!enabled); }];
             items.push(item);
         }
         var settingsItems = [];
         settingsItems.push(['Show effective keybindings', function() { self.showEffectiveKeybindings(); }]);
         settingsItems.push(['Customize keybindings', function() { self.customizeKeybindingsInteractively(); }]);
-        settingsItems.push(["themes", themeItems]);
+        settingsItems.push([lively.lang.string.format('[%s] use emacs-like keys', lively.Config.get('useEmacsyKeys') ? "X" : " "), function() { lively.Config.set('useEmacsyKeys', !lively.Config.get('useEmacsyKeys')); }]);
         settingsItems.push(["modes", modeItems]);
+        settingsItems.push(["themes", themeItems]);
         boolItem({name: "ShowGutter", menuString: "show line numbers"}, settingsItems);
         boolItem({name: "ShowInvisibles", menuString: "show whitespace"}, settingsItems);
         boolItem({name: "ShowPrintMargin", menuString: "show print margin"}, settingsItems);
@@ -1759,11 +1760,11 @@ lively.morphic.Morph.subclass('lively.morphic.CodeEditor',
         boolItem({name: "ShowIndents", menuString: "show indents"}, settingsItems);
         boolItem({name: "SoftTabs", menuString: "use soft tabs"}, settingsItems);
         settingsItems.push(['Change tab width', function() {
-            $world.prompt('new tab size', function(input) { var size = Number(input); if (size) editor.setTabSize(size); }, editor.guessTabSize() || 4);
+          $world.prompt('new tab size', function(input) { var size = Number(input); if (size) editor.setTabSize(size); }, editor.guessTabSize() || 4);
         }]);
         boolItem({name: "LineWrapping", menuString: "line wrapping"}, settingsItems);
         settingsItems.push(['Change line ending mode', function() {
-            $world.listPrompt('Choose line ending mode', function(input) { editor.setNewLineMode(input); }, ['auto', 'windows', 'unix'], editor.getNewLineMode(), pt(200,120));
+          $world.listPrompt('Choose line ending mode', function(input) { editor.setNewLineMode(input); }, ['auto', 'windows', 'unix'], editor.getNewLineMode(), pt(200,120));
         }]);
         boolItem({name: "ShowWarnings", menuString: "show warnings"}, settingsItems);
         boolItem({name: "ShowErrors", menuString: "show Errors"}, settingsItems);
@@ -1788,7 +1789,7 @@ lively.morphic.Morph.subclass('lively.morphic.CodeEditor',
                 if (options.focusAfter) editor.focus();
             }]);
         }
-        
+
         cmdBinding({name: 'save', cmdName: 'doSave', shortcut: {win: 'CTRL-s', mac: 'CMD-s'}});
         if (isJs) {
           cmdBinding({name: 'property completion', cmdName: 'list protocol', shortcut: {win: 'CTRL-P', mac: 'CMD-P'}});
@@ -1812,32 +1813,36 @@ lively.morphic.Morph.subclass('lively.morphic.CodeEditor',
         return $super().concat([['CodeEditor...', this.codeEditorMenuItems()]]);
     },
     showMorphMenu: function ($super, evt) {
-        if (!evt || !evt.isRightMouseButtonDown()) return $super(evt);
-        lively.morphic.Menu.openAtHand('', this.codeEditorMenuItems());
-        evt && evt.stop();
-        return true;
+        if (evt && (evt.isRightMouseButtonDown()
+         || (evt.isLeftMouseButtonDown() && (UserAgent.isMacOS && evt.isCtrlDown())))) {
+          lively.morphic.Menu.openAtHand('', this.codeEditorMenuItems());
+          evt && evt.stop();
+          return true;
+         } else  return $super(evt);
     }
 },
 'messaging', {
+
+    ensureStatusMessageMorph: function() {
+      if (this._statusMorph) return this._statusMorph;
+      var ext = this.getExtent();
+      var sm = this._statusMorph = new lively.morphic.Text(ext.withY(80).extentAsRectangle());
+      sm.applyStyle({
+          fontFamily: 'Monaco,monospace',
+          borderWidth: 0, borderRadius: 6,
+          fontSize: this.getFontSize()-2,
+          inputAllowed: false,
+          fixedWidth: true, fixedHeight: false,
+      });
+      sm.isEpiMorph = true;
+      return sm;
+    },
+
     setStatusMessage: function (msg, color, delay) {
         var world = this.world();
         if (!world) return;
-        var self = this, sm = this._statusMorph,
+        var self = this, sm = this._statusMorph || this.ensureStatusMessageMorph(),
             ext = this.getExtent();
-
-        // create if not there yet. Note that every editor gets its own message
-        // morph but that the message morph will be a submorph of world
-        if (!sm) {
-            this._statusMorph = sm = new lively.morphic.Text(ext.withY(80).extentAsRectangle());
-            sm.applyStyle({
-                fontFamily: 'Monaco,monospace',
-                borderWidth: 0, borderRadius: 6,
-                fontSize: this.getFontSize()-2,
-                inputAllowed: false,
-                fixedWidth: true, fixedHeight: false,
-            });
-            sm.isEpiMorph = true;
-        }
 
         // setting 'da message
         if (Array.isArray(msg)) sm.setRichTextMarkup(msg);
@@ -1868,7 +1873,7 @@ lively.morphic.Morph.subclass('lively.morphic.CodeEditor',
             sm.remove();
             self.withAceDo(function(ed) { ed.off("changeSelection", removeStatusMessage); })
           }
-        
+
           if (sm._removeTimer) clearTimeout(sm._removeTimer);
           if (typeof delay === "number") {
             sm._removeTimer = setTimeout(removeStatusMessage, 1000*delay)
