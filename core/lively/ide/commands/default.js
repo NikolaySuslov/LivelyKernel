@@ -1054,9 +1054,9 @@ Object.extend(lively.ide.commands.byName, {
     'lively.ide.openSystemConsole': {
         description: 'open SystemConsole (to see console logging)',
         exec: function() {
-            lively.require("lively.ide.tools.SystemConsole").toRun(function() {
-                lively.ide.tools.SystemConsole.open();
-            });
+            if ($world.get("LogMessages")) $world.get("LogMessages").comeForward();
+            else lively.require("lively.ide.tools.SystemConsole")
+              .toRun(function() { lively.ide.tools.SystemConsole.open(); });
             return true;
         }
     },
@@ -1418,6 +1418,7 @@ Object.extend(lively.ide.commands.byName, {
 
     // lively-2-lively
     'lively.net.lively2lively.openWorkspace': {description: 'open Lively2LivelyWorkspace', isActive: lively.ide.commands.helper.noCodeEditorActive, exec: function() { lively.require('lively.net.tools.Lively2Lively').toRun(function() { lively.BuildSpec("lively.net.tools.Lively2LivelyWorkspace").createMorph().openInWorldCenter().comeForward(); }); return true; }},
+    'lively.net.tools.openLively2LivelyInspector': {description: 'open Lively2Lively inspector', isActive: lively.ide.commands.helper.noCodeEditorActive, exec: function() { lively.require('lively.net.tools.Lively2Lively').toRun(function() { lively.BuildSpec("lively.net.tools.Lively2LivelyInspector").createMorph().openInWorldCenter().comeForward(); }); return true; }},
     'lively.net.lively2lively.listSessions': {
         description: 'list lively-2-lively sessions',
         exec: function(withSelectedSessionDo, forceRefresh) {
