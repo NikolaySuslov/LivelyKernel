@@ -455,6 +455,24 @@ lively.morphic.Morph.subclass('lively.morphic.Image',
         return $super(evt)
     }
 },
+'type conversion', {
+
+    convertTo: function(type, quality) {
+        if (!type) return;
+        if (!quality) quality = 1;
+        var imgElement = this.renderContext().imgNode,
+            canvas = document.createElement('canvas'),
+            ext = this.getExtent(),
+            ctx = canvas.getContext('2d');
+        canvas.width = imgElement.width;
+        canvas.height = imgElement.height;
+        ctx.drawImage(imgElement, 0, 0, ext.x, ext.y);
+        var dataURL = canvas.toDataURL(type, quality);
+        this.setImageURL(dataURL);
+        return dataURL;
+    }
+
+},
 'inline image', {
 
     convertToBase64: function() {
@@ -787,7 +805,8 @@ lively.morphic.Box.subclass('lively.morphic.Menu',
         borderWidth: 1,
         borderRadius: 4,
         opacity: 0.95,
-        clipMode: 'visible'
+        clipMode: 'visible',
+        zIndex: 1000
     },
 
     paddingLeft: 20,
@@ -2506,7 +2525,7 @@ lively.morphic.Box.subclass("lively.morphic.TitleBar",
 'event handling', {
     showResizeMenu: function() {
         var win = this.getWindow(), world = this.world(), items = [];
-        items.pushAll(["full","left","center","right","top","bottom", "reset"].map(function(how) {
+        items.pushAll(["fullscreen","left","center","right","top","bottom", "reset"].map(function(how) {
             return [how, function() {
               lively.ide.commands.exec('lively.ide.resizeWindow', how, win);
               win.comeForward();

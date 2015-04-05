@@ -71,6 +71,7 @@ lively.morphic.Morph.subclass('lively.morphic.CodeEditor',
         elasticTabs: Config.get('useElasticTabs'),
         tabSize: Config.get('defaultTabSize'),
         autocompletion: Config.get('aceDefaultEnableAutocompletion'),
+        behaviors: Config.get('aceDefaultEnableBehaviors'),
         showWarnings: Config.get('aceDefaultShowWarnings'),
         showErrors: Config.get('aceDefaultShowErrors')
     },
@@ -120,6 +121,7 @@ lively.morphic.Morph.subclass('lively.morphic.CodeEditor',
         if (spec.showActiveLine !== undefined) this.setShowActiveLine(spec.showActiveLine);
         if (spec.softTabs !== undefined)       this.setSoftTabs(spec.softTabs);
         if (spec.autocompletion !== undefined) this.setAutocompletionEnabled(spec.autocompletion);
+        if (spec.behaviors !== undefined)      this.setBehaviorsEnabled(spec.behaviors);
         if (spec.showWarnings !== undefined)   this.setShowWarnings(spec.showWarnings);
         if (spec.showErrors !== undefined)     this.setShowErrors(spec.showErrors);
         if (spec.tabSize !== undefined)        this.setTabSize(spec.tabSize);
@@ -194,6 +196,7 @@ lively.morphic.Morph.subclass('lively.morphic.CodeEditor',
         if (this.getElasticTabs()) this.setElasticTabs(true);
         this.setShowActiveLine(this.getShowActiveLine());
         this.setAutocompletionEnabled(this.getAutocompletionEnabled());
+        this.setBehaviorsEnabled(this.getBehaviorsEnabled());
         this.setShowWarnings(this.getShowWarnings());
         this.setInputAllowed(this.inputAllowed());
 
@@ -670,19 +673,19 @@ lively.morphic.Morph.subclass('lively.morphic.CodeEditor',
 'event handling', {
 
     onMouseDownEntry: function($super, evt) {
-        // ace installs a pointerup event handler on the document level and
+        // ace installs a Global.Event.INPUT_TYPE_UP event handler on the document level and
         // stops the event so it never reaches our Morphic event handlers. To
         // still dispatch the event properly we install an additional pointerup
         // handler that is removed immediately thereafter
         var self = this;
         function upHandler(evt) {
-            document.removeEventListener("pointerup", upHandler, true);
+            document.removeEventListener(Global.Event.INPUT_TYPE_UP, upHandler, true);
             lively.morphic.EventHandler.prototype.patchEvent(evt);
             evt.hand.clickedOnMorph = self;
             [self].concat(self.ownerChain()).reverse().forEach(function(ea) {
                 ea.onMouseUpEntry(evt); });
         }
-        document.addEventListener("pointerup", upHandler, true);
+        document.addEventListener(Global.Event.INPUT_TYPE_UP, upHandler, true);
         evt.hand.clickedOnMorph = this;
         return $super(evt);
     },
@@ -1601,6 +1604,15 @@ lively.morphic.Morph.subclass('lively.morphic.CodeEditor',
     getAutocompletionEnabled: function() {
         return this.hasOwnProperty("_AutocompletionEnabled") ? this._AutocompletionEnabled : this.withAceDo(function(ed) {
             return ed.getOption("enableBasicAutocompletion"); });
+    },
+
+    setBehaviorsEnabled: function(bool) {
+        this.withAceDo(function(ed) { ed.setOption("behaviorsEnabled", bool); });
+        return this._BehaviorsEnabled = bool;
+    },
+    getBehaviorsEnabled: function() {
+        return this.hasOwnProperty("_BehaviorsEnabled") ? this._BehaviorsEnabled : this.withAceDo(function(ed) {
+            return ed.getOption("behaviorsEnabled"); });
     },
 
     setShowWarnings: function(bool) { return this._ShowWarnings = bool; },

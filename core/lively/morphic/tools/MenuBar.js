@@ -14,13 +14,22 @@ lively.BuildSpec("lively.morphic.tools.MenuBar", {
     },
     layout: { adjustForNewBounds: true, resizeHeight: false, resizeWidth: true },
     name: "MenuBar",
+    isGlobalMenuBar: true,
+
+    onWorldResize: function onWorldResize() {
+      var self = this;
+      lively.lang.fun.debounceNamed(this.id+"-world-resize", 100, function() {
+        var w = $world.visibleBounds().width;
+        self.setExtent(self.getExtent().withWidth(w));
+        self.relayout();
+      })
+    },
 
     leftsAndRights: function leftsAndRights() {
       var mid = this.innerBounds().center().x;
       return this.submorphs
         .sortBy(function(ea) { return ea.getPosition().x; })
         .partition(function(ea) { return ea.bounds().topRight().x < mid; });
-
     },
 
     relayout: function relayout() {
@@ -116,7 +125,7 @@ lively.BuildSpec("lively.morphic.tools.MenuBarEntry", {
     fontFamily: "Geneva,Helvetica,sans-serif",
     whiteSpaceHandling: "pre",
     handStyle: "pointer",
-    fill: Color.white,
+    fill: null,
     textColor: Color.gray.darker()
   },
 
@@ -143,7 +152,7 @@ lively.BuildSpec("lively.morphic.tools.MenuBarEntry", {
     var self = this;
     lively.lang.fun.debounceNamed(this.id+"removemenu", 100, function() {
       if (self.changeColorForMenu)
-        self.applyStyle({fill: Color.white, textColor: Color.gray.darker()});
+        self.applyStyle({fill: null, textColor: Color.gray.darker()});
       self.menu && self.menu.remove();
       self.menu = null;
     })();
@@ -200,8 +209,12 @@ Object.extend(lively.morphic.tools.MenuBar, {
   },
 
   open: function() {
-    return $world.get(/^MenuBar/)
-      || lively.BuildSpec("lively.morphic.tools.MenuBar")
+    var menuBar = $world.get(/^MenuBar/);
+    // menuBar.remove()
+    if (menuBar && !menuBar.isGlobalMenuBar)
+      menuBar = null;
+
+    return menuBar || lively.BuildSpec("lively.morphic.tools.MenuBar")
         .createMorph().openInWorld().onLoad();
   },
 
