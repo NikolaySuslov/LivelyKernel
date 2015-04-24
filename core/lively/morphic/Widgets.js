@@ -2056,16 +2056,31 @@ lively.morphic.World.addMethods(
         return items;
     },
 
+    translateMe: function(menuEntry){
+
+        if (lively.Config.get("UserLanguage") == "russian") {
+               if (lively.Config["russian"][menuEntry] !== undefined)
+                    return lively.Config["russian"][menuEntry]
+      }
+
+        return menuEntry;
+    },
+
+
     morphMenuItems: function() {
         var world = this;
         var items = [
-            ['PartsBin', this.openPartsBin.bind(this)],
-            ['Parts', this.morphMenuDefaultPartsItems()],
-            ['Search', [
-                ['code', function() { lively.ide.commands.byName["lively.ide.codeSearch"].exec(); }],
+             ['Language/Язык', [
+                ['English', function(){lively.Config.set("UserLanguage", "english")}],
+                ['Русский', function(){lively.Config.set("UserLanguage", "russian")}],
+            ]],
+            [this.translateMe('PartsBin'), this.openPartsBin.bind(this)],
+            [this.translateMe('Parts'), this.morphMenuDefaultPartsItems()],
+            [this.translateMe('Search'), [
+                [this.translateMe('code'), function() { lively.ide.commands.byName["lively.ide.codeSearch"].exec(); }],
                 ['resources (worlds, parts, files)', function() { lively.ide.commands.byName["lively.ide.resourceSearch"].exec(); }]
             ]],
-            ['Tools', [
+            [this.translateMe('Tools'), [
                 ['Workspace', this.openWorkspace.bind(this)],
                 ['System Code Browser', this.openSystemBrowser.bind(this)],
                 ['Object Editor', this.openObjectEditor.bind(this)],
@@ -2084,7 +2099,7 @@ lively.morphic.World.addMethods(
                 ['Stop stepping', function() { world.submorphs.each(
                         function(ea) {ea.stopStepping && ea.stopStepping()})}],
             ]],
-            ['Preferences', [
+            [this.translateMe('Preferences'), [
                 ['Show login info', function() {
                     lively.require("lively.net.Wiki").toRun(function() { lively.net.Wiki.showLoginInfo(); })
                 }],
@@ -2114,8 +2129,8 @@ lively.morphic.World.addMethods(
             ]],
             ['Report a bug', this.bugReport.bind(this)],
             ['Run command...', function() { lively.ide.commands.exec('lively.ide.commands.execute'); }],
-            ['Save world as ...', this.interactiveSaveWorldAs.bind(this), 'synchron'],
-            ['Save world', this.saveWorld.bind(this), 'synchron']
+            [this.translateMe('Save world as ...'), this.interactiveSaveWorldAs.bind(this), 'synchron'],
+            [this.translateMe('Save world'), this.saveWorld.bind(this), 'synchron']
         ];
 
         return items;

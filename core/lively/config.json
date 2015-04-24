@@ -96,6 +96,19 @@
         "type": "function",
         "code": "function(val) { return lively.LocalStorage.set('UserEmail', val ? val.replace(/ /g, '_') : val); }"
       }
+    },
+     {
+      "name": "UserLanguage",
+      "type": "String",
+      "doc": "Language for the current Lively user",
+      "get": {
+        "type": "function",
+        "code": "function() { var userLang = lively.LocalStorage.get('UserLanguage');\nif (userLang && userLang !== 'undefined') return userLang;\nvar sslAuth = Config.get('ssl-auth');\nreturn (sslAuth && sslAuth.userLang) || userLang; }"
+      },
+      "set": {
+        "type": "function",
+        "code": "function(val) { return lively.LocalStorage.set('UserLanguage', val ? val.replace(/ /g, '_') : val); }"
+      }
     }
   ],
 
@@ -406,5 +419,27 @@
       "lively.morphic.tools.LogMenuBarEntry",
       "lively.ide.tools.JavaScriptToolsMenuBarEntries"
       ], "Which menu bar entries to add by default? Specifies modules that should implement a getMenuBarEntries() method."]
+  ],
+
+  "languageDictionary": [
+     ["russian", 
+      {"PartsBin": "Каталог образов", 
+        "Parts": "Примитивы",
+        "Preferences": "Настройки",
+        "Object Editor": "Редактор объектов",
+        "Tools": "Инструменты",
+        "Search": "Поиск",
+        "Rectangle": "Прямоугольник",
+        "Ellipse": "Элипс",
+        "Image": "Изображение",
+        "Text": "Текст",
+        "Line": "Линия",
+        "Preferences": "Настройки",
+        "Save world as ...": "Сохранить мир как...",
+        "Save world": "Сохранить мир"
+          }, "Translations on russian."]
   ]
+
+
+
 }
