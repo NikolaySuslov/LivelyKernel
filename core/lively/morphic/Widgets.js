@@ -353,7 +353,7 @@ lively.morphic.Morph.subclass('lively.morphic.Image',
 
         var options = useNativeExtentOrOptions;
         if (typeof useNativeExtentOrOptions === "boolean")
-          options = {useNativeExtent: useNativeExtentOrOptions} 
+          options = {useNativeExtent: useNativeExtentOrOptions}
         options = options || {};
         if (options.maxWidth || options.maxHeight || options.keepAspectRatio)
           options.useNativeExtent = true;
@@ -386,7 +386,7 @@ lively.morphic.Morph.subclass('lively.morphic.Image',
             }
             self.setExtent(ext);
           }
-        
+
           thenDo && thenDo(null, self);
         }
     },
@@ -870,7 +870,7 @@ lively.morphic.Box.subclass('lively.morphic.Menu',
 
       var keys         = evt.getKeyString(),
           handled      = false;
-  
+
       switch (keys) {
         case "Down": this.selectNext(evt); handled = true; break;
         case "Up": this.selectPrev(evt); handled = true; break;
@@ -885,7 +885,7 @@ lively.morphic.Box.subclass('lively.morphic.Menu',
           handled = true;
           break;
       }
-  
+
       if (!handled) return $super(evt);
       evt.stop(); return true;
   }
@@ -1292,7 +1292,7 @@ lively.morphic.Text.subclass("lively.morphic.MenuItem",
         arrowMorph.applyStyle(this.getStyle());
         this.arrow = this.addMorph(arrowMorph);
     },
-    
+
     showDivider: function() {
       this.setExtent(pt(20, 3));
       this.textString = "";
@@ -2177,7 +2177,13 @@ lively.morphic.World.addMethods(
                 ['Stop stepping', function() { world.submorphs.each(
                         function(ea) {ea.stopStepping && ea.stopStepping()})}],
             ]],
+
             [this.translateMe('Preferences'), [
+
+                $world.get(/^MenuBar/) && $world.get(/^MenuBar/).isGlobalMenuBar ?
+                  ['Hide menu bar', lively.ide.commands.exec.bind(null, 'lively.morphic.MenuBar.hide')] :
+                  ['Show menu bar', lively.ide.commands.exec.bind(null, 'lively.morphic.MenuBar.show')],
+
                 ['Show login info', function() {
                     lively.require("lively.net.Wiki").toRun(function() { lively.net.Wiki.showLoginInfo(); })
                 }],

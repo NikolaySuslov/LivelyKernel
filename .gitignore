@@ -12,6 +12,8 @@ localconfig.js
 *.html
 !blank.html
 !run_tests.html
+!onedrive.html
+!dropbox.html
 
 
 # Node #
