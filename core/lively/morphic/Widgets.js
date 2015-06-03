@@ -871,6 +871,14 @@ lively.morphic.Box.subclass('lively.morphic.Menu',
       var keys         = evt.getKeyString(),
           handled      = false;
 
+  
+      if (keys.match(/^[0-9]$/)) {
+        var n = Number(keys);
+        this.select(n-1, evt);
+        handled = true;
+      }
+
+
       switch (keys) {
         case "Down": this.selectNext(evt); handled = true; break;
         case "Up": this.selectPrev(evt); handled = true; break;
@@ -2178,11 +2186,13 @@ lively.morphic.World.addMethods(
                         function(ea) {ea.stopStepping && ea.stopStepping()})}],
             ]],
 
+
             [this.translateMe('Preferences'), [
 
                 $world.get(/^MenuBar/) && $world.get(/^MenuBar/).isGlobalMenuBar ?
                   ['Hide menu bar', lively.ide.commands.exec.bind(null, 'lively.morphic.MenuBar.hide')] :
                   ['Show menu bar', lively.ide.commands.exec.bind(null, 'lively.morphic.MenuBar.show')],
+
 
                 ['Show login info', function() {
                     lively.require("lively.net.Wiki").toRun(function() { lively.net.Wiki.showLoginInfo(); })
@@ -2875,30 +2885,45 @@ lively.morphic.Morph.subclass('lively.morphic.Window', Trait('lively.morphic.Dra
         // adds the window before each other morph in owner
         // this resets the scroll in HTML, fix for now -- gather before and set it afterwards
         // step 1: highlight me and remove highlight from other windows
+        var self = this;
         if (!this.isActive()) {
             this.world().submorphs.forEach(function(ea) {
-                ea !== this && ea.isWindow && ea.highlight(false); }, this);
+              ea !== this && ea.isWindow && ea.highlight(false); }, this);
             this.highlight(true);
         }
 
-        var inner = this.targetMorph, callGetsFocus = inner && !!inner.onWindowGetsFocus;
-        if (this.isActive()) { callGetsFocus && inner.onWindowGetsFocus(this); return this; }
+        if (this.isActive()) { focusAction(); return this; }
 
         // step 2: make me the frontmost morph of the world
         var scrolledMorphs = [], scrolls = [];
         this.withAllSubmorphsDo(function(ea) {
-            var scroll = ea.getScroll();
-            if (!scroll[0] && !scroll[1]) return this;
-            scrolledMorphs.push(ea); scrolls.push(scroll);
+          var scroll = ea.getScroll();
+          if (!scroll[0] && !scroll[1]) return self;
+          scrolledMorphs.push(ea); scrolls.push(scroll);
         });
         this.owner.addMorphFront(this); // come forward
         this.alignAllHandles();
         (function() {
-            scrolledMorphs.forEach(function(ea, i) { ea.setScroll(scrolls[i][0], scrolls[i][1]) });
-            if (callGetsFocus) { inner.onWindowGetsFocus(this); }
-            lively.bindings.signal(lively.morphic.Window, 'windowActivated', this);
-        }).bind(this).delay(0);
+            scrolledMorphs.forEach(function(ea, i) { ea.setScroll(scrolls[i][0], scrolls[i][1]); });
+            focusAction();
+            lively.bindings.signal(lively.morphic.Window, 'windowActivated', self);
+        }).delay(0);
         return this;
+
+        // -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+        function focusAction() {
+          var inner = self.targetMorph,
+              callGetsFocus = inner && !!inner.onWindowGetsFocus;
+          if (!callGetsFocus) return;
+          var modal = self.submorphs.filterByKey("isModalMorph")[0];
+          if (modal) {
+            var target = modal.modalTarget || modal;
+            target.focus();
+          } else {
+            inner.onWindowGetsFocus(self);
+          }
+        }
     },
 
     onMouseDown: function(evt) {
@@ -2917,6 +2942,7 @@ lively.morphic.Morph.subclass('lively.morphic.Window', Trait('lively.morphic.Dra
         this.cameForward = true; // for stopping the up as well
         return false;
     },
+
     onMouseUp: function(evt) {
         if (!this.cameForward) return false;
         this.cameForward = false;

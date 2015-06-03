@@ -855,12 +855,12 @@ lively.morphic.Morph.subclass('lively.morphic.CodeEditor',
                 var interpreter = new lively.ast.AcornInterpreter.Interpreter(),
                     ast;
                 try {
-                    ast = lively.ast.acorn.parse(str = '(' + __evalStatement + ')');
+                    ast = lively.ast.parse(str = '(' + __evalStatement + ')');
                     acorn.walk.addAstIndex(ast);
                     acorn.walk.addSource(ast, str);
                     return interpreter.runWithContext(ast, ctx, Global);
                 } catch (e) {
-                    ast = lively.ast.acorn.parse(str = __evalStatement);
+                    ast = lively.ast.parse(str = __evalStatement);
                     acorn.walk.addAstIndex(ast);
                     acorn.walk.addSource(ast, str);
                     // In case str starts with a comment, set str to program node
@@ -917,7 +917,7 @@ lively.morphic.Morph.subclass('lively.morphic.CodeEditor',
       var doitMarker = "// =>", match;
       var printDepth = 1;
       var src = ed.textString;
-      var ast = lively.ast.acorn.parse(src);
+      var ast = lively.ast.parse(src);
 
       // 2. Find the doit markers in comments and for each comment get a range
       var commentRanges = Strings
@@ -1837,24 +1837,37 @@ lively.morphic.Morph.subclass('lively.morphic.CodeEditor',
         if (!world) return;
         var self = this, sm = this._statusMorph || this.ensureStatusMessageMorph(),
             ext = this.getExtent();
-
+      
         sm.bringToFront();
         // setting 'da message
         sm.lastUpdated = Date.now();
+        if (!sm.owner) sm.setVisible(false); // to avoid flickering
         world.addMorph(sm);
-        var color = color || Color.white;
-        var fill = (color === Color.green || color === Color.red || color === Color.black) ? Color.white : Color.black.lighter()
-        sm.applyStyle({textColor: color, fill: fill});
-        if (Array.isArray(msg)) sm.setRichTextMarkup(msg);
-        else sm.textString = msg;
-
+        var color = color || Global.Color.white;
+        var fill = (color === Global.Color.green || color === Global.Color.red || color === Global.Color.black) ? Global.Color.white : Global.Color.black.lighter()
+        var ext = this.getExtent(), maxX = ext.x, maxY = Math.max(40, Math.min(ext.y-100, 250));
+        sm.applyStyle({textColor: color, fill: fill, fixedHeight: false, fixedWidth: false, clipMode: 'visible'});
+        if (!Array.isArray(msg)) {
+          msg = [
+            ['expand', {color: color, doit: {code: "evt.getTargetMorph().expand();"}}],
+            ['\n'],
+            [String(msg)]
+          ]
+        }
+        sm.setRichTextMarkup(msg);
+      
         // aligning
-
-        sm.setPosition(self.worldPoint(self.innerBounds().bottomLeft()));
+        sm.setTextExtent(pt(maxX, 10));
         sm.fitThenDo(function() {
+          sm.setVisible(true);
+          sm.setPosition(self.worldPoint(self.innerBounds().bottomLeft()));
           var visibleBounds = world.visibleBounds(),
-              overlapY = sm.bounds().bottom() - visibleBounds.bottom();
+              bounds = sm.bounds(),
+              height = Math.min(bounds.height+3, maxY),
+              overlapY = bounds.bottom() - visibleBounds.bottom();
           if (overlapY > 0) sm.moveBy(pt(0, -overlapY));
+          sm.applyStyle({fixedHeight: true, fixedWidth: true, clipMode: {x: 'hidden', y: 'auto'}});
+          sm.setExtent(pt(maxX, height));
           var cb = sm.get("closeButton");
           if (cb) cb.alignInOwner();
         });
