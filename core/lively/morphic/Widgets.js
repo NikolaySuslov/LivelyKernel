@@ -1626,8 +1626,10 @@ lively.morphic.Text.addMethods(
             function() { self.setInputAllowed(!self.inputAllowed()); }
         ], [
             (self.isInputLine ? '[X]' : '[  ]') + ' Return Key accepts value',
-            function() { self.beInputLine(!self.isInputLine);
-                        self.isInputLine = !self.isInputLine;}
+            function() {
+                if (self.isInputLine) self.isInputLine = false;
+                else self.beInputLine();
+            }
         ], [
             (self.evalEnabled ? '[X]' : '[  ]') + ' eval',
             function() { self.evalEnabled = !self.evalEnabled }
@@ -1706,8 +1708,8 @@ lively.morphic.World.addMethods(
     openStyleEditorFor: function(morph, evt) {
         var self = this;
         lively.require('lively.ide.tools.StyleEditor').toRun(function() {
-            var styleEditorWindow = lively.BuildSpec('lively.ide.tools.StyleEditor').createMorph().
-                    openInWorld();
+            var styleEditorWindow = lively.BuildSpec('lively.ide.tools.StyleEditor')
+              .createMorph().openInWorld();
             styleEditorWindow.setTarget(morph);
             var alignPos = morph.getGlobalTransform().transformPoint(morph.innerBounds().bottomLeft()),
                 edBounds = styleEditorWindow.innerBounds(),
@@ -1715,21 +1717,7 @@ lively.morphic.World.addMethods(
             if (visibleBounds.containsRect(edBounds.translatedBy(alignPos))) {
                 styleEditorWindow.setPosition(alignPos);
             } else {
-                styleEditorWindow.setPositionCentered(visibleBounds.center());
-            }
-            if (lively.Config.get('useAceEditor')) {
-                var oldEditor = styleEditorWindow.get("CSSCodePane"),
-                    newEditor = new lively.morphic.CodeEditor(oldEditor.bounds(), oldEditor.textString);
-                newEditor.applyStyle({
-                    fontSize: lively.Config.get('defaultCodeFontSize')-1,
-                    gutter: false,
-                    textMode: 'css',
-                    lineWrapping: false,
-                    printMargin: false,
-                    resizeWidth: true, resizeHeight: true
-                });
-                lively.bindings.connect(newEditor, "savedTextString", oldEditor.get("CSSApplyButton"), "onFire");
-                newEditor.replaceTextMorph(oldEditor);
+                styleEditorWindow.openInWorldCenter();
             }
             styleEditorWindow.comeForward();
         });
@@ -2267,14 +2255,17 @@ lively.morphic.World.addMethods(
         var extent = spec.extent || pt(500, 200),
             textMorph = new lively.morphic.Text(extent.extentAsRectangle(), spec.content || ""),
             pane = this.internalAddWindow(textMorph, spec.title, spec.position);
-        textMorph.applyStyle({
+        var defaultStyle = {
             clipMode: 'auto',
             fixedWidth: true, fixedHeight: true,
             resizeWidth: true, resizeHeight: true,
             syntaxHighlighting: spec.syntaxHighlighting,
             padding: Rectangle.inset(4,2),
             fontSize: Config.get('defaultCodeFontSize')
-        });
+        };
+        if(spec.style) {defaultStyle = lively.lang.obj.merge(defaultStyle, spec.style)};
+        textMorph.applyStyle(defaultStyle);
+
         return pane;
     },
 

@@ -2,7 +2,19 @@ var util = require('util'),
     path = require('path'),
     j = require('path').join,
     i = function(obj, depth, showAll) { return util.inspect(obj, showAll, typeof depth === 'number' ? depth : 1); },
-    async = require(j(process.env.LK_SCRIPTS_ROOT, 'node_modules/async'));
+    async = require(j(process.env.LK_SCRIPTS_ROOT, 'node_modules/async')),
+    geoip;
+
+try {
+    geoip = require('./GeoIPServer');
+} catch(e) {
+    geoip = {
+        getIPLocation: function(ip, thenDo) {
+            thenDo(null, {location: "", ip: ip});
+        }
+    }
+}
+
 
 function uuid() { // helper
     var id = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
@@ -750,6 +762,7 @@ function SessionTracker(options) {
     }
 
     this.getSessionListSimplified = function(options, thenDo) {
+
         var tracker = this;
 
         async.waterfall([
@@ -801,12 +814,15 @@ function SessionTracker(options) {
 
             // 4. add geolocation info
             function(participants, next) {
-                var geoip = require('./GeoIPServer');
-                async.eachLimit(participants, 3, function(ea, next) {
-                    if (!ea.remoteAddress) { next(null); return; }
-                    geoip.getIPLocation(ea.remoteAddress, function(err, ipInfo) {
-                        ea.location = ipInfo; next(); })
-                }, function(err) { next(null, participants); });
+                async.forEachSeries(participants,
+                  function(ea, next) {
+                    if (!ea.remoteAddress) next(null);
+                    else if (ea.location && ea.location.location) next(null)
+                    else geoip.getIPLocation(
+                      ea.remoteAddress,
+                      function(err, ipInfo) { ea.location = ipInfo; next(); })
+                  },
+                  function(err) { next(null, participants); });
             }
 
         ], thenDo);
@@ -952,9 +968,8 @@ module.exports = function(route, app, subserver) {
 
     // json list of sessions of the default tracker
     app.get(route + 'sessions/default-flattened', function(req, res) {
-        SessionTracker.default().getSessionListSimplified({}, function(err, sessions) {
-            res.json(sessions).end();
-        });
+        SessionTracker.default().getSessionListSimplified({},
+        function(err, sessions) { res.json(sessions).end(); });
     });
 
     // gather sessions from trackers on all routes
