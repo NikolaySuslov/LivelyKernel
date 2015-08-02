@@ -272,7 +272,7 @@ lively.ide.CommandLineInterface.Command.subclass('lively.ide.CommandLineInterfac
         if (this._done) {
             isScheduled && lively.ide.CommandLineInterface.unscheduleCommand(this, group);
             thenDo && thenDo();
-        } else if (lively.ide.CommandLineInterface.isScheduled(this, this.getGroup())) {
+        } else if (!this._started && lively.ide.CommandLineInterface.isScheduled(this, this.getGroup())) {
             this._killed = true;
             isScheduled && lively.ide.CommandLineInterface.unscheduleCommand(this, group);
             thenDo && thenDo();
@@ -280,6 +280,7 @@ lively.ide.CommandLineInterface.Command.subclass('lively.ide.CommandLineInterfac
             var pid = this.getPid();
             if (!pid) { thenDo && thenDo(new Error('Command has no pid!'), null); }
             var self = this;
+            signal = signal || "SIGKILL";
             this.send('stopShellCommand', {signal: signal, pid:pid} , function(err, answer) {
                 err = err || (answer.data && answer.data.error);
                 if (err) console.warn("stopShellCommand: " + err);
@@ -805,7 +806,16 @@ Object.extend(lively.ide.CommandLineSearch, {
 
     doGrep: function(string, path, thenDo) {
         var lastGrep = lively.ide.CommandLineSearch.lastGrep;
-        if (lastGrep) lastGrep.kill();
+        if (lastGrep && lastGrep.isRunning() && !lastGrep.wasKilled()) {
+          lastGrep.kill("KILL");
+          lively.lang.fun.waitFor(400,
+            function() { return !lively.ide.CommandLineSearch.lastGrep; },
+            function() {
+              lively.ide.CommandLineSearch.doGrep(string, path, thenDo);
+            })
+          return;
+        }
+
         path = path || '';
         if (path.length && !path.endsWith('/')) path += '/';
         var rootDirectory = lively.ide.CommandLineInterface.rootDirectory,
@@ -816,16 +826,14 @@ Object.extend(lively.ide.CommandLineSearch, {
             // baseCmd = 'find %s \( %s -o -size +1M \) -prune -o -type f -a \( -iname "*.js" -o -iname "*.jade" -o -iname "*.css" -o -iname "*.json" \) -print0 | xargs -0 grep -inH -o ".\\{0,%s\\}%s.\\{0,%s\\}" ',
             baseCmd = 'find %s \( %s -o -size +1M \) -prune -o -type f -a -print0 | xargs -0 grep -IinH -o ".\\{0,%s\\}%s.\\{0,%s\\}" ',
             platform = lively.ide.CommandLineInterface.getServerPlatform();
-        if (platform !== 'win32') {
-            baseCmd = baseCmd.replace(/([\(\);])/g, '\\$1');
-        }
-        var charsBefore = 80, charsAfter = 80;
-        var cmd = Strings.format(baseCmd, fullPath, excludes, charsBefore, string, charsAfter);
-        lively.ide.CommandLineSearch.lastGrep = lively.shell.exec(cmd, function(err, r) {
-            if (r.wasKilled()) return;
+        if (platform !== 'win32') baseCmd = baseCmd.replace(/([\(\);])/g, '\\$1');
+        var charsBefore = 80, charsAfter = 80,
+            cmd = Strings.format(baseCmd, fullPath, excludes, charsBefore, string, charsAfter);
+        lively.ide.CommandLineSearch.lastGrep = lively.shell.run(cmd, function(err, r) {
             lively.ide.CommandLineSearch.lastGrep = null;
-            var lines = r.getStdout().split('\n').map(function(line) {
-                return line.replace(/\/\//g, '/'); })
+            if (r.wasKilled()) return;
+            var lines = r.getStdout().split('\n')
+              .map(function(line) { return line.replace(/\/\//g, '/'); });
             thenDo && thenDo(lines, fullPath);
         });
     },
@@ -848,13 +856,15 @@ Object.extend(lively.ide.CommandLineSearch, {
         return ff && ff.browseIt({line: spec.line/*, browser: getCurrentBrowser()*/});
     },
 
-    extractBrowseRefFromGrepLine: function(line, baseDir) {
+    extractBrowseRefFromGrepLine: function extractBrowseRefFromGrepLine(line, baseDir) {
         // extractBrowseRefFromGrepLine("lively/morphic/HTML.js:235:    foo")
         // = {fileName: "lively/morphic/HTML.js", line: 235}
         if (baseDir && line.indexOf(baseDir) === 0) line = line.slice(baseDir.length);
         line = line.replace(/\\/g, '/').replace(/^\.\//, '');
-        var fileMatch = line.match(/((?:[^\/\s]+\/)*[^\.]+\.[^:]+):([0-9]+)/);
-        return fileMatch ? {fileName: fileMatch[1], line: Number(fileMatch[2]), baseDir: baseDir} : null;
+        var fileMatch = line.match(/((?:[^\/\s]+\/)*[^\.]+\.[^:]+):?([0-9]+)?/);
+        return fileMatch ?
+          {fileName: fileMatch[1], line: Number(fileMatch[2]), baseDir: baseDir}
+          : null;
     },
 
     extractModuleNameFromLine: function(line) {
@@ -875,11 +885,15 @@ Object.extend(lively.ide.CommandLineSearch, {
 
     doBrowseAtPointOrRegion: function(codeEditor) {
         try {
-            var str = codeEditor.getSelectionOrLineString();
-            str = str.replace(/\/\//g, '/');
-            var spec = this.extractBrowseRefFromGrepLine(str) || this.extractModuleNameFromLine(str);
+            var pos = codeEditor.getCursorPositionAce(),
+                line = codeEditor.aceEditor.session.getLine(pos.row),
+                start = (lively.lang.string.peekLeft(line, pos.column, " ") || -1) + 1,
+                end = lively.lang.string.peekRight(line, pos.column, " ") || line.length,
+                substring = line.slice(start, end).replace(/\/\//g, '/'),
+                spec = this.extractBrowseRefFromGrepLine(substring)
+                    || this.extractModuleNameFromLine(substring);
             if (!spec) {
-                show("cannot extract browse ref from %s", str);
+                show("cannot extract browse ref from %s", substring);
             } else {
                 // this.doBrowse(spec);
                 lively.ide.openFile(spec.fileName + (spec.line ? ':' + spec.line : ''));
@@ -903,7 +917,7 @@ Object.extend(lively.ide.CommandLineSearch, {
                           + "else "
                           + "  timeformat=\"--time-style=+%b %d %T %Y\"; "
                           + "fi && ";
-        var excludes = options.excludes || '-iname ".svn" -o -iname ".git" -o -iname "node_modules"',
+        var excludes = options.excludes || ("-iname " + lively.Config.codeSearchGrepExclusions.map(Strings.print).join(' -o -iname ')),
             searchPart = Strings.format('%s "%s"', options.re ? '-iregex' : (options.matchPath ? '-ipath' : '-iname'), pattern),
             depth = options.hasOwnProperty('depth') ? ' -maxdepth ' + options.depth : '',
             // use GMT for time settings by default so the result is comparable
