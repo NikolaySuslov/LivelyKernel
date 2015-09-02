@@ -31,6 +31,32 @@ TestCase.subclass('lively.ide.tests.CommandLineInterface.Shell',
 TestCase.subclass('lively.ide.tests.CommandLineInterface.Differ',
 'testing', {
 
+    testGetLineOfFile: function() {
+      var patchString = "diff --git a/test.txt b/test.txt\n"
+                      + "index e42fd89..581f1fd 100644\n"
+                      + "--- a/test.txt\n"
+                      + "+++ b/test.txt\n"
+                      + "@@ -2,3 +2,3 @@\n"
+                      + " a\n"
+                      + "-b\n"
+                      + "+c\n"
+                      + " d\n"
+                      + "@@ -5,3 +5,4 @@\n"
+                      + " a\n"
+                      + "-b\n"
+                      + "+c\n"
+                      + "+c\n"
+                      + " d\n";
+
+        var patch = lively.ide.FilePatch.read(patchString);
+        this.assertEquals(4, patch.hunks[1].relativeOffsetToFileLine(0));
+        this.assertEquals(4, patch.hunks[1].relativeOffsetToFileLine(1));
+        this.assertEquals(4, patch.hunks[1].relativeOffsetToFileLine(2));
+        this.assertEquals(5, patch.hunks[1].relativeOffsetToFileLine(3));
+        this.assertEquals(6, patch.hunks[1].relativeOffsetToFileLine(4));
+        this.assertEquals(7, patch.hunks[1].relativeOffsetToFileLine(5));
+    },
+
     testParsePatch: function() {
         var patchString = "diff --git a/test.txt b/test.txt\n"
             + "index bb53c45..3b6c223 100644\n"
@@ -54,6 +80,8 @@ TestCase.subclass('lively.ide.tests.CommandLineInterface.Differ',
 
         // header
         this.assertEquals('diff --git a/test.txt b/test.txt', patch.command);
+        this.assertEquals('test.txt', patch.fileNameA);
+        this.assertEquals('test.txt', patch.fileNameB);
         this.assertEquals('a/test.txt', patch.pathOriginal);
         this.assertEquals('b/test.txt', patch.pathChanged);
 
@@ -75,6 +103,40 @@ TestCase.subclass('lively.ide.tests.CommandLineInterface.Differ',
         this.assertEquals(expectedHunkString, hunks[0].createPatchString());
     },
 
+    testHunksHaveRightFileName: function() {
+      var patchString = "diff --git a/test.txt b/test.txt\n"
+                      + "index e42fd89..581f1fd 100644\n"
+                      + "--- a/test.txt\n"
+                      + "+++ b/test.txt\n"
+                      + "@@ -2,3 +2,3 @@\n"
+                      + " a\n"
+                      + "-b\n"
+                      + "+c\n"
+                      + " d\n"
+                      + "@@ -2,3 +2,3 @@\n"
+                      + " a\n"
+                      + "-b\n"
+                      + "+c\n"
+                      + " d\n"
+                      + "diff --git a/test2.txt b/test2.txt\n"
+                      + "index e42fd89..581f1fd 100644\n"
+                      + "--- a/test2.txt\n"
+                      + "+++ b/test2.txt\n"
+                      + "@@ -2,3 +2,3 @@\n"
+                      + " a\n"
+                      + "-b\n"
+                      + "+c\n"
+                      + " d\n";
+
+        var patch = lively.ide.FilePatch.read(patchString);
+        this.assertEquals("test.txt", patch.hunks[0].fileNameA);
+        this.assertEquals("test.txt", patch.hunks[0].fileNameB);
+        this.assertEquals("test.txt", patch.hunks[1].fileNameA);
+        this.assertEquals("test.txt", patch.hunks[1].fileNameB);
+        this.assertEquals("test2.txt", patch.hunks[2].fileNameA);
+        this.assertEquals("test2.txt", patch.hunks[2].fileNameB);
+    },
+
     testCreateHunkFromSelectedRows: function() {
         var origHunk = "@@ -2,4 +2,5 @@ xxx yyy\n"
                      + " hello world\n"
@@ -87,39 +149,22 @@ TestCase.subclass('lively.ide.tests.CommandLineInterface.Differ',
         var result, expected;
 
         result = hunk.createPatchStringFromRows(4,6);
-        expected = "@@ -2,4 +2,5 @@\n"
-                 + " hello world\n"
-                 + " this lines is removed\n"
+        expected = "@@ -3,2 +3,3 @@\n"
                  + "+this line as well\n"
                  + " foo bar baz\n"
                  + " har har har";
-        // expected = "@@ -4,2 +4,3 @@\n"
-        //     + "+this line as well\n"
-        //     + " foo bar baz\n"
-        //     + " har har har";
         this.assertEquals(expected, result, 'at end');
-        
+
         result = hunk.createPatchStringFromRows(2,3);
-        expected = "@@ -2,4 +2,4 @@\n"
-                 + " hello world\n"
-                 + "-this lines is removed\n"
-                 + "+this lines is added\n"
-                 + " foo bar baz\n"
-                 + " har har har";
-        // expected = "@@ -3,1 +3,1 @@\n"
-        //     + "-this lines is removed\n"
-        //     + "+this lines is added"
+        expected = "@@ -2,2 +2,2 @@\n"
+                + " hello world\n"
+                + "-this lines is removed\n"
+                + "+this lines is added";
         this.assertEquals(expected, result, 'add and remove');
 
         result = hunk.createPatchStringFromRows(3,3);
-        expected = "@@ -2,4 +2,5 @@\n"
-                 + " hello world\n"
-                 + " this lines is removed\n"
-                 + "+this lines is added\n"
-                 + " foo bar baz\n"
-                 + " har har har";
-        // expected = "@@ -4,0 +4,1 @@\n"
-        //     + "+this lines is added"
+        expected = "@@ -3,0 +3,1 @@\n"
+                + "+this lines is added"
         this.assertEquals(expected, result, 'just add');
 
         result = hunk.createPatchStringFromRows(7,9);
@@ -127,16 +172,10 @@ TestCase.subclass('lively.ide.tests.CommandLineInterface.Differ',
         this.assertEquals(expected, result, 'outside');
 
         result = hunk.createPatchStringFromRows(4,9);
-        expected = "@@ -2,4 +2,5 @@\n"
-                 + " hello world\n"
-                 + " this lines is removed\n"
-                 + "+this line as well\n"
-                 + " foo bar baz\n"
-                 + " har har har";
-        // expected = "@@ -4,2 +4,3 @@\n"
-        //     + "+this line as well\n"
-        //     + " foo bar baz\n"
-        //     + " har har har";
+        expected = "@@ -3,2 +3,3 @@\n"
+                + "+this line as well\n"
+                + " foo bar baz\n"
+                + " har har har";
         this.assertEquals(expected, result, 'too long');
     },
     
@@ -145,19 +184,19 @@ TestCase.subclass('lively.ide.tests.CommandLineInterface.Differ',
                         + "--- a/test.txt\n"
                         + "+++ b/test.txt\n"
                         + "@@ -2,3 +2,3 @@ Bitcoins are used in a small, open, pure-exchange economy embedded within many\n"
-                        + " of the world's largest, open, production economies. Even with a market\n"
-                        + "-capitalization of $2.5 billion, the bitcoin economy is dwarfed by $15 trillion\n"
-                        + "+capitalization of $2.5 billion, the bitcoin economy is dwarfed hey by $15 trillion\n"
-                        + " economies such as the U.S. Therefore, sudden and large increases in the user\n"
-                        + "@@ -20,2 +20,3 @@ information does not correspond with the number of lines in the hunk, then the\n"
-                        + " diff could be considered invalid and be rejected. Optionally, the hunk range\n"
+                        + " of the world's largest\n"
+                        + "-capitalization of $2.5 billion\n"
+                        + "+capitalization of $3.5 billion\n"
+                        + " economies such as the U.S.\n"
+                        + "@@ -20,2 +20,3 @@ information does not\n"
+                        + " diff could be considered\n"
                         + "+123\n"
-                        + " can be followed by the heading of the section or function that the hunk is\n"
-                        + "@@ -25,3 +26,3 @@ matching.[8] If a line is modified, it is represented as a deletion and\n"
-                        + " addition. Since the hunks of the original and new file appear in the same\n"
-                        + "-hunk, such changes would appear adjacent to one another.[9] An occurrence of\n"
-                        + "+hunk, foo such changes would appear adjacent to one another.[9] An occurrence of\n"
-                        + " this in the example below is:";
+                        + " can be followed by the heading\n"
+                        + "@@ -25,3 +26,3 @@ matching.[8]\n"
+                        + " addition. Since the hunks\n"
+                        + "-hunk, such changes\n"
+                        + "+hunk, foo such changes\n"
+                        + " this in the";
         var patch = lively.ide.FilePatch.read(patchString);
         var result, expected;
 
@@ -170,10 +209,8 @@ TestCase.subclass('lively.ide.tests.CommandLineInterface.Differ',
         expected = "diff --git a/test.txt b/test.txt\n"
                  + "--- a/test.txt\n"
                  + "+++ b/test.txt\n"
-                 + "@@ -2,3 +2,3 @@\n"
-                 + " of the world's largest, open, production economies. Even with a market\n"
-                 + " capitalization of $2.5 billion, the bitcoin economy is dwarfed by $15 trillion\n"
-                 + " economies such as the U.S. Therefore, sudden and large increases in the user\n";
+                 + "@@ -2,1 +2,1 @@\n"
+                 + " of the world's largest\n";
         this.assertEquals(expected, result, "just the hunk header and one context line");
 
         result = patch.createPatchStringFromRows(3,7);
@@ -181,25 +218,23 @@ TestCase.subclass('lively.ide.tests.CommandLineInterface.Differ',
                  + "--- a/test.txt\n"
                  + "+++ b/test.txt\n"
                  + "@@ -2,3 +2,3 @@\n"
-                 + " of the world's largest, open, production economies. Even with a market\n"
-                 + "-capitalization of $2.5 billion, the bitcoin economy is dwarfed by $15 trillion\n"
-                 + "+capitalization of $2.5 billion, the bitcoin economy is dwarfed hey by $15 trillion\n"
-                 + " economies such as the U.S. Therefore, sudden and large increases in the user\n";
+                 + " of the world's largest\n"
+                 + "-capitalization of $2.5 billion\n"
+                 + "+capitalization of $3.5 billion\n"
+                 + " economies such as the U.S.\n";
         this.assertEquals(expected, result, "first hunk");
 
         result = patch.createPatchStringFromRows(6, 10);
         expected = "diff --git a/test.txt b/test.txt\n"
                  + "--- a/test.txt\n"
                  + "+++ b/test.txt\n"
-                 + "@@ -2,3 +2,4 @@\n"
-                 + " of the world's largest, open, production economies. Even with a market\n"
-                 + " capitalization of $2.5 billion, the bitcoin economy is dwarfed by $15 trillion\n"
-                 + "+capitalization of $2.5 billion, the bitcoin economy is dwarfed hey by $15 trillion\n"
-                 + " economies such as the U.S. Therefore, sudden and large increases in the user\n"
+                 + "@@ -3,1 +3,2 @@\n"
+                 + "+capitalization of $3.5 billion\n"
+                 + " economies such as the U.S.\n"
                  + "@@ -20,2 +20,3 @@\n"
-                 + " diff could be considered invalid and be rejected. Optionally, the hunk range\n"
+                 + " diff could be considered\n"
                  + "+123\n"
-                 + " can be followed by the heading of the section or function that the hunk is\n";
+                 + " can be followed by the heading\n";
         this.assertEquals(expected, result, "first two hunks overlapping");
     },
 
@@ -218,14 +253,13 @@ TestCase.subclass('lively.ide.tests.CommandLineInterface.Differ',
             + "-d\n"
             + " e\n";
         patch = lively.ide.FilePatch.read(patchString);
-        result = patch.createPatchStringFromRows(6,8, true/*reverse*/); // -c,-d
+        result = patch.createPatchStringFromRows(6,7, true/*reverse*/); // -c,-d
         expected = "diff --git a/test.txt b/test.txt\n"
-                 + "--- a/test.txt\n"
-                 + "+++ b/test.txt\n"
-                 + "@@ -2,4 +2,2 @@\n"
-                 + " a\n"
-                 + "-c\n"
-                 + "-d\n"
+                 + "--- b/test.txt\n"
+                 + "+++ a/test.txt\n"
+                 + "@@ -3,3 +3,1 @@\n"
+                 + "+c\n"
+                 + "+d\n"
                  + " e\n"
         this.assertEquals(expected, result, "1");
 
@@ -234,8 +268,30 @@ TestCase.subclass('lively.ide.tests.CommandLineInterface.Differ',
             + "index bb53c45..3b6c223 100644\n"
             + "--- a/test.txt\n"
             + "+++ b/test.txt\n"
-            + "@@ -2,2 +2,5 @@\n"
+            + "@@ -2,5 +2,3 @@\n"
             + " a\n"
+            + "-b\n"
+            + "-c\n"
+            + "-d\n"
+            + " e\n"
+            + "+f\n";
+        patch = lively.ide.FilePatch.read(patchString);
+        result = patch.createPatchStringFromRows(6,7, true/*reverse*/); // -c,-d
+        expected = "diff --git a/test.txt b/test.txt\n"
+                 + "--- b/test.txt\n"
+                 + "+++ a/test.txt\n"
+                 + "@@ -3,3 +3,1 @@\n"
+                 + "+c\n"
+                 + "+d\n"
+                 + " e\n"
+        this.assertEquals(expected, result, "2");
+
+        // -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+        patchString = "diff --git a/test.txt b/test.txt\n"
+            + "index bb53c45..3b6c223 100644\n"
+            + "--- a/test.txt\n"
+            + "+++ b/test.txt\n"
+            + "@@ -2,2 +2,5 @@\n"
             + "+b\n"
             + "+c\n"
             + "+d\n"
@@ -243,15 +299,12 @@ TestCase.subclass('lively.ide.tests.CommandLineInterface.Differ',
         patch = lively.ide.FilePatch.read(patchString);
         result = patch.createPatchStringFromRows(6,6, true/*reverse*/); // +c
         expected = "diff --git a/test.txt b/test.txt\n"
-                 + "--- a/test.txt\n"
-                 + "+++ b/test.txt\n"
-                 + "@@ -2,4 +2,5 @@\n"
-                 + " a\n"
-                 + " b\n"
-                 + "+c\n"
-                 + " d\n"
+                 + "--- b/test.txt\n"
+                 + "+++ a/test.txt\n"
+                 + "@@ -2,1 +2,2 @@\n"
+                 + "-d\n"
                  + " e\n"
-        this.assertEquals(expected, result, "2");
+        this.assertEquals(expected, result, "3");
 
         patchString = "diff --git a/test.txt b/test.txt\n"
             + "index bb53c45..3b6c223 100644\n"
@@ -265,13 +318,11 @@ TestCase.subclass('lively.ide.tests.CommandLineInterface.Differ',
         patch = lively.ide.FilePatch.read(patchString);
         result = patch.createPatchStringFromRows(6,6, true/*reverse*/); // +b2
         expected = "diff --git a/test.txt b/test.txt\n"
-                 + "--- a/test.txt\n"
-                 + "+++ b/test.txt\n"
-                 + "@@ -2,2 +2,3 @@\n"
-                 + " a\n"
-                 + "+b2\n"
-                 + " c\n";
-        this.assertEquals(expected, result, "3");
+                 + "--- b/test.txt\n"
+                 + "+++ a/test.txt\n"
+                 + "@@ -3,0 +3,1 @@\n"
+                 + "-b2\n"
+        this.assertEquals(expected, result, "4");
 
         patchString = "diff --git a/test.txt b/test.txt\n"
             + "index bb53c45..3b6c223 100644\n"
@@ -286,14 +337,12 @@ TestCase.subclass('lively.ide.tests.CommandLineInterface.Differ',
         patch = lively.ide.FilePatch.read(patchString);
         result = patch.createPatchStringFromRows(6,7, true/*reverse*/); // -c1, +b2
         expected = "diff --git a/test.txt b/test.txt\n"
-                 + "--- a/test.txt\n"
-                 + "+++ b/test.txt\n"
-                 + "@@ -2,3 +2,3 @@\n"
-                 + " a\n"
-                 + "-c1\n"
-                 + "+b2\n"
-                 + " c2\n";
-        this.assertEquals(expected, result, "4");
+                 + "--- b/test.txt\n"
+                 + "+++ a/test.txt\n"
+                 + "@@ -3,1 +3,1 @@\n"
+                 + "+c1\n"
+                 + "-b2\n"
+        this.assertEquals(expected, result, "5");
     },
 
     testGetChangedLines: function() {
@@ -553,6 +602,13 @@ TestCase.subclass('lively.ide.tests.CommandLineInterface.AnsiColorParser',
 });
 
 AsyncTestCase.subclass('lively.ide.tests.CommandLineInterface.RunServerShellProcess',
+'running', {
+  shouldRun: !lively.Config.serverInvokedTest,
+
+  setUp: function(run) {
+    lively.net.SessionTracker.whenOnline(function() { run(); });
+  }
+},
 'testing', {
     testRunSimpleCommand: function() {
         var cmdString = 'echo 1', result = '',
@@ -599,10 +655,13 @@ AsyncTestCase.subclass('lively.ide.tests.CommandLineInterface.RunServerShellProc
 
 AsyncTestCase.subclass('lively.ide.tests.CommandLineInterface.RunCommand',
 'running', {
+    shouldRun: !lively.Config.serverInvokedTest,
+
     setUp: function($super) {
         $super();
         lively.ide.CommandLineInterface.history.setId("cmd-history-" + this.currentSelector);
     },
+
     tearDown: function($super) {
         $super();
         lively.ide.CommandLineInterface.history.clear();
@@ -613,18 +672,19 @@ AsyncTestCase.subclass('lively.ide.tests.CommandLineInterface.RunCommand',
 
     testRunSimpleCommand: function() {
         var cmd = new lively.ide.CommandLineInterface.PersistentCommand('echo 1; sleep 0.5; echo 2', {});
-        var result, listener = { onOut: function(out) { result = out; } };
+        var result, listener = {onOut: function(out) { result = out; }};
         lively.bindings.connect(cmd, 'stdout', listener, 'onOut');
         cmd.start();
-        this.delay(function() {
-            this.assertEquals('1', result.trim());
-        }, 200);
-        this.delay(function() {
+        this.waitFor(function() { return !!result; }, 10, function() {
+          this.assertEquals('1', result.trim());
+          result = null;
+          this.waitFor(function() { return !!result; }, 10, function() {
             this.assertEquals('2', result.trim());
             this.assert(cmd.isDone(), 'cmd is not done!');
             this.assertEquals(0, cmd.getCode(), 'code: ' + cmd.getCode());
             this.done();
-        }, 700);
+          });
+        });
     },
 
     testInterface: function() {
@@ -652,20 +712,23 @@ AsyncTestCase.subclass('lively.ide.tests.CommandLineInterface.RunCommand',
 
     testCommandsAreRecordedInHistory: function() {
         var t = Date.now(),
-            cmd1 = lively.ide.CommandLineInterface.run('echo 1', {addToHistory: true, }),
+            cmd1 = lively.ide.CommandLineInterface.run('echo 1', {addToHistory: true}),
             cmd2 = lively.ide.CommandLineInterface.run('echo 2', {addToHistory: true, group: 'test'});
             cmd2 = lively.ide.CommandLineInterface.run('echo 3', {addToHistory: false, group: 'test'});
         this.waitFor(function() { return cmd1.getStdout().trim() && cmd2.getStdout().trim(); }, 10, function() {
             var hist = lively.ide.CommandLineInterface.history.getCommands();
             this.assertMatches([
-                {group: null, commandString: "echo 1"},
-                {group: "test", commandString: "echo 2"}], hist);
+                {commandString: "echo 1"},
+                {commandString: "echo 2", group: "test"}], hist);
             this.done();
         })
     }
 });
 
 AsyncTestCase.subclass('lively.ide.tests.CommandLineInterface.SpellChecker',
+'running', {
+  shouldRun: !lively.Config.serverInvokedTest
+},
 'testing', {
     testCheckWord: function() {
         var suggestions;
@@ -687,8 +750,9 @@ AsyncTestCase.subclass('lively.ide.tests.CommandLineInterface.SpellChecker',
 
 AsyncTestCase.subclass('lively.ide.tests.CommandLineInterface.RemoteShellExecute',
 'running', {
-    setUp: function($super) {
-        $super();
+    shouldRun: !lively.Config.serverInvokedTest,
+
+    setUp: function(run) {
 
         // 1. Prepare fake nslookup
         var nslookupTable = this.nslookupTable = {};
@@ -698,7 +762,7 @@ AsyncTestCase.subclass('lively.ide.tests.CommandLineInterface.RemoteShellExecute
                 var addr = cmd.match(/nslookup\s+(.*)$/)[1];
                 var c = new lively.ide.CommandLineInterface.PersistentCommand(cmd, options);
                 Object.extend(c, {_code: 0,_done: true, _stdout: nslookupTable[addr], _stderr: ""});
-                callback(c);
+                callback(null, c);
             } else return shellRun.call(lively.shell, cmd, options, callback);
         };
 
@@ -718,6 +782,8 @@ AsyncTestCase.subclass('lively.ide.tests.CommandLineInterface.RemoteShellExecute
             withTrackerSessionsDo.call(lively.net.tools.Functions, localSess, function(err, trackers) {
                 callback(err, trackers ? trackers.concat(fakeTrackers) : trackers); });
         };
+
+        lively.net.SessionTracker.whenOnline(function() { run(); });
     },
 
     tearDown: function($super) {
@@ -733,7 +799,7 @@ AsyncTestCase.subclass('lively.ide.tests.CommandLineInterface.RemoteShellExecute
 
     testExecuteRemoteShellCommand: function() {
         this.setMaxWaitDelay(2000);
-        var test = this;
+        var test = this, cmd, err;
 
         // 1. fake domain - ip mapping
         this.nslookupTable['foo.bar.com'] = "Server:		74.207.241.5\n"
@@ -757,10 +823,13 @@ AsyncTestCase.subclass('lively.ide.tests.CommandLineInterface.RemoteShellExecute
         };
 
         // Now run the actual test
-        lively.shell.run("ls -l", {server: "foo.bar.com"}, function(err, cmd) {
-            test.assertEquals(1, cmd.getCode());
-            test.assertEquals("foobar", cmd.getStdout());
-            test.done();
+        lively.shell.run("ls -l", {server: "foo.bar.com"}, function(_err, _cmd) { err = _err; cmd = _cmd; });
+        
+        this.waitFor(function() { return !!err || !!cmd; }, 10, function() {
+          err && this.assert(false, err.stack);
+          this.assertEquals("foobar", cmd.getStdout());
+          this.assertEquals(1, cmd.getCode());
+          this.done();
         });
     }
 

@@ -159,7 +159,46 @@ Object.subclass('lively.ide.CodeEditor.KeyboardShortcuts',
                 exec: this.morphBinding("doInspect"),
                 multiSelectAction: "forEach",
                 readOnly: true
-            }, {
+            },
+
+            // -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+            {
+                name: "openEvalResult",
+                multiSelectAction: 'forEach',
+                bindKey: {win: "Alt-o|Ctrl-o", mac: "Command-o|Alt-o"},
+                exec: function(ed, args) {
+                    args = args || {};
+                    var insert = args.insert; // either insert into current editor or open in window
+                    var content = args.content;
+            
+                    lively.lang.fun.composeAsync(triggerExpand)(function(err) { err && console.error(err); })
+            
+                    return true;
+            
+                    // -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+            
+                    function triggerExpand(next) {
+                      var msgMorph = ed.$morph.ensureStatusMessageMorph();
+                      msgMorph = msgMorph && msgMorph.world() ? msgMorph : null;
+                      if (!msgMorph) return next(null, new Error("No statusmorph to expand!"));
+                      if (content) msgMorph.insertion = content;
+                      msgMorph.expand(insert ? ed.$morph : null, ed.$morph.getTextMode());
+                      next(null);
+                    }
+            
+                  }
+            },
+            {
+              name: "insertEvalResult",
+              bindKey: {win: "Alt-i", mac: "Alt-i"},
+              multiSelectAction: "forEach",
+              exec: function(ed) {
+                 ed.execCommand('openEvalResult', {insert: true}); 
+              },
+            },
+
+            // -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+            {
                 name: 'togglePrintitAsComment',
                 exec: function(ed, args) {
                   ed.$morph.setPrintItAsComment(!ed.$morph.getPrintItAsComment());
@@ -524,25 +563,25 @@ Object.subclass('lively.ide.CodeEditor.KeyboardShortcuts',
             }, {
                 name: "selecttolinestart",
                 bindKey: 'Shift-Home|Ctrl-Shift-A',
-                exec: function(ed) { ed.getSelection().selectLineStart(); },
+                exec: function(ed) { ed.getSelection().selectLineStart(); ed.renderer.scrollCursorIntoView(); },
                 multiSelectAction: "forEach",
                 readOnly: true
             }, {
                 name: "gotolinestart",
                 bindKey: {win: "Home", mac: "Home|Ctrl-A"},
-                exec: function(ed) { ed.navigateLineStart(); },
+                exec: function(ed) { ed.navigateLineStart(); ed.renderer.scrollCursorIntoView(); },
                 multiSelectAction: "forEach",
                 readOnly: true
             }, {
                 name: "selecttolineend",
                 bindKey: "Shift-End|Ctrl-Shift-E",
-                exec: function(ed) { ed.getSelection().selectLineEnd(); },
+                exec: function(ed) { ed.getSelection().selectLineEnd(); ed.renderer.scrollCursorIntoView(); },
                 multiSelectAction: "forEach",
                 readOnly: true
             }, {
                 name: "gotolineend",
                 bindKey: "End|Ctrl-E",
-                exec: function(ed) { ed.navigateLineEnd(); },
+                exec: function(ed) { ed.navigateLineEnd(); ed.renderer.scrollCursorIntoView(); },
                 multiSelectAction: "forEach",
                 readOnly: true
             }, {
@@ -552,6 +591,7 @@ Object.subclass('lively.ide.CodeEditor.KeyboardShortcuts',
                     $world.prompt("Enter line number: ", function(input) {
                         var line = parseInt(input);
                         if (!isNaN(line)) editor.gotoLine(line);
+                        editor.renderer.scrollCursorIntoView();
                     }, String(editor.getCursorPositionScreen().row + 1));
                 },
                 readOnly: true
@@ -599,6 +639,7 @@ Object.subclass('lively.ide.CodeEditor.KeyboardShortcuts',
                         if (!isEmptyLine(lines[i-1]) && isEmptyLine(lines[i])) break;
                     }
                     ed.selection[ed.emacsMark && ed.emacsMark() ? "selectToPosition": "moveToPosition"]({row: pos.row+found, column: 0});
+                    ed.renderer.scrollCursorIntoView();
                 },
                 readOnly: true
             }, {
@@ -614,6 +655,7 @@ Object.subclass('lively.ide.CodeEditor.KeyboardShortcuts',
                         if (!isEmptyLine(lines[i+1]) && isEmptyLine(lines[i])) break;
                     }
                     ed.selection[ed.emacsMark && ed.emacsMark() ? "selectToPosition": "moveToPosition"]({row: found, column: 0});
+                    ed.renderer.scrollCursorIntoView();
                 },
                 readOnly: true
             }, {
@@ -1067,11 +1109,13 @@ Object.extend(lively.ide.CodeEditor.KeyboardShortcuts, {
         return this._instance || (this._instance = new this());
     },
     reinitKeyBindingsForAllOpenEditors: function() {
-      lively.ide.allCodeEditors().forEach(function(ea) {
-        ea.withAceDo(function(ed) {
-          ed.keyBinding.$handlers.forEach(function(h) { delete h.hasLivelyKeys; });
-          lively.ide.CodeEditor.KeyboardShortcuts.defaultInstance().attach(ea);
-        })
+      lively.whenLoaded(function() {
+        lively.ide.allCodeEditors().forEach(function(ea) {
+          ea.withAceDo(function(ed) {
+            ed.keyBinding.$handlers.forEach(function(h) { delete h.hasLivelyKeys; });
+            lively.ide.CodeEditor.KeyboardShortcuts.defaultInstance().attach(ea);
+          })
+        });
       });
     }
 });

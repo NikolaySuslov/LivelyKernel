@@ -81,6 +81,8 @@ lively.BuildSpec('lively.ide.tools.CurrentDirectoryMenuBarEntry', lively.BuildSp
   },
 
   morphMenuItems: function morphMenuItems() {
+    var mac = Global.UserAgent.isMacOS;
+    var cmd = mac ? "cmd" : "ctrl";
     var self = this,
         actions = this.actions(),
         items = [
@@ -91,10 +93,10 @@ lively.BuildSpec('lively.ide.tools.CurrentDirectoryMenuBarEntry', lively.BuildSp
                          ["clear...", actions.clear],
                          ["choose...", actions.changeDir]])
           ],
-          ["browse directory...", actions.openDirViewer],
-          ["find files...", actions.searchForFiles],
-          ["find in files (grep)...", actions.searchInFiles],
-          ["run shell command...", actions.runShellCommand],
+          ["browse directory... (ctrl-x d)", actions.openDirViewer],
+          ["find files... (ctrl-x f)", actions.searchForFiles],
+          ["find in files (grep)... (" + cmd + "-shift-f)", actions.searchInFiles],
+          ["run shell command... (alt-!)", actions.runShellCommand],
           ["open git control...", actions.openGit],
           ["show os processes...", actions.showOsProcesses],
         ];
@@ -128,11 +130,12 @@ lively.BuildSpec('lively.ide.tools.CurrentDirectoryMenuBarEntry', lively.BuildSp
   },
 
   update: function update() {
-    var path = lively.shell.cwd();
-    if (!path) path = lively.shell.WORKSPACE_LK;
-    this.updateText(path);
-    if (!this.dirs.include(path))
-      this.addDir(path);
+    lively.shell.cwd(function(err, path) {
+      if (!path) path = lively.shell.WORKSPACE_LK;
+      this.updateText(path);
+      if (!this.dirs.include(path))
+        this.addDir(path);
+    }.bind(this));
   },
 
   onLoad: function onLoad() {

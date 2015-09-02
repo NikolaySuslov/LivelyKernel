@@ -216,8 +216,9 @@ function setupEmacsSpecificCommands(kbd) {
   kbd.bindKeys({"C-c C-S-,": "selectAllLikeThis"});
   kbd.bindKeys({"CMD-f": 'moveForwardToMatching'});
   kbd.bindKeys({"CMD-b": 'moveBackwardToMatching'});
-  kbd.bindKeys({"S-CMD-f": 'selectToMatchingForward'});
-  kbd.bindKeys({"S-CMD-b": 'selectToMatchingBackward'});
+  // conflict with invoke search...
+  // kbd.bindKeys({"S-CMD-f": 'selectToMatchingForward'});
+  // kbd.bindKeys({"S-CMD-b": 'selectToMatchingBackward'});
 
   kbd.bindKeys(bind(cmdLPrefix + "f i x", 'fixTextScale'));
 
@@ -230,7 +231,7 @@ function setupEmacsSpecificCommands(kbd) {
   kbd.bindKeys(bind(cmdLPrefix + "o p e n", 'doBrowseAtPointOrRegion'));
 
   kbd.bindKeys(bind(cmdLPrefix + "s n i p", 'browseSnippets'));
-  kbd.bindKeys(bind("S-CMD-c", 'browseSnippets'));
+  // kbd.bindKeys(bind("S-CMD-c", 'browseSnippets'));
 
   kbd.bindKeys({"M-q": 'fitTextToColumn'});
   kbd.bindKeys(bind(cmdLPrefix + "w t", 'cleanupWhitespace'));
