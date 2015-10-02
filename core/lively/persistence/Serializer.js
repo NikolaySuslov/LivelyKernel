@@ -2,7 +2,7 @@ module('lively.persistence.Serializer').requires().toRun(function() {
 
 Object.subclass('ObjectGraphLinearizer',
 'settings', {
-    defaultCopyDepth: 100,
+    defaultCopyDepth: 10000,
     keepIds: Config.keepSerializerIds || false,
     showLog: false,
     prettyPrint: false
@@ -25,11 +25,13 @@ Object.subclass('ObjectGraphLinearizer',
         // (de)serialized
         this.objStack = [];
     },
-    cleanup: function() {
+
+    cleanup: function(registry) {
         // remove ids from all original objects and the original objects as
         // well as any recreated objects
-        for (var id in this.registry) {
-            var entry = this.registry[id];
+        for (var id in registry) {
+            var entry = registry[id];
+            if (!entry) continue;
             if (!this.keepIds && entry.originalObject)
                 delete entry.originalObject[this.idProperty]
             if (!this.keepIds && entry.recreatedObject)
@@ -53,7 +55,8 @@ Object.subclass('ObjectGraphLinearizer',
     escapedCDATAEnd: '<=CDATAEND=>',
     CDATAEnd: '\]\]\>',
 
-    newId: function() {    return this.idCounter++ },
+    newId: function() { return String(this.idCounter++); },
+
     getIdFromObject: function(obj) {
         return obj.hasOwnProperty(this.idProperty) ? obj[this.idProperty] : undefined;
     },
@@ -76,6 +79,80 @@ Object.subclass('ObjectGraphLinearizer',
     getRefFromId: function(id) {
         return this.registry[id] && this.registry[id].ref;
     },
+
+    allIdsReferencedBy: function(registeredObject) {
+      var vals = Object.isArray(registeredObject) ?
+        registeredObject : Object.values(registeredObject);
+      return lively.lang.arr.flatmap(vals, function(ref) {
+          if (this.isReference(ref)) return [String(ref.id)];
+          if (Object.isArray(ref)) return this.allIdsReferencedBy(ref);
+          return [];
+      }, this).uniq();
+    },
+
+    directReferencePaths: function(registeredObject) {
+      // lists all direct references of registeredObject in a map form like
+      // {
+      //   1: [["hands", 0], ["submorphs", 1]],
+      //   3: [["shape"]],
+      //   ...
+      // }
+      var serializer = this;
+
+      return gatherReferences(registeredObject, []).reduce(function(refMap, ea) {
+        var ref = refMap[ea.id] || (refMap[ea.id] = []);
+        ref.push(ea.path);
+        return refMap
+      }, {});
+
+      function gatherReferences(obj, path) {
+        if (!obj || typeof obj === "string" || typeof obj === "number" || typeof obj === "boolean") return [];
+        if (serializer.isReference(obj)) return {path: path, id: String(obj.id)};
+        else if (Array.isArray(obj)) return lively.lang.arr.flatmap(obj, function(ea, i) { return gatherReferences(ea, path.concat([i])); })
+        else if (Object.isObject(obj)) return lively.lang.arr.flatmap(Object.keys(obj), function(key) { return gatherReferences(obj[key], path.concat([key])); })
+        else return [];
+      }
+    },
+
+    referenceGraph: function(registry) {
+      // creates a mapping ID -> [ID], key - owning object, val - all ids of
+      // objects referenced by it
+      var formerRegistry = this.registry;
+      registry = this.registry = this.createRealRegistry(registry);
+      var refs = {};
+      for (var id in registry) {
+        refs[id] = this.allIdsReferencedBy(registry[id].registeredObject);
+      }
+      this.registry = formerRegistry;
+      return refs;
+    },
+
+    referenceGraphWithPaths: function(registry) {
+      // creates a mapping ID -> {ID: [path1, path2, ...], ...}
+      var formerRegistry = this.registry;
+      var serializer = this;
+      registry = this.registry = this.createRealRegistry(registry);
+      var graph = Object.keys(registry).reduce(function(map, id) {
+        map[id] = serializer.directReferencePaths(registry[id].registeredObject);
+        return map;
+      }, {});
+      this.registry = formerRegistry;
+      return graph;
+    },
+
+    invertedReferenceGraph: function(registry) {
+      // creates a mapping ID -> [ID], key - an object in the registry, val -
+      // all ids pointing to it
+      // Useful for reference counting and garbage collection
+      var graph = this.referenceGraph(registry), refs = {};
+      for (var owningObjId in graph) {
+        refs = graph[owningObjId].reduce(function(refs, id) {
+          (refs[id] || (refs[id] = [])).pushIfNotIncluded(owningObjId);
+          return refs;
+        }, refs);
+      }
+      return refs;
+    }
 },
 'plugins', {
     addPlugin: function(plugin) {
@@ -138,6 +215,11 @@ Object.subclass('ObjectGraphLinearizer',
     },
     addIdAndAddToRegistryIfNecessary: function(obj) {
         var id = this.getIdFromObject(obj);
+        if (this.registry[id] && this.registry[id].originalObject && this.registry[id].originalObject !== obj) {
+          // This only happens when something went wrong while serializing and
+          // the registry + registeredObjects weren't cleaned up...
+          id = undefined;
+        }
         if (id === undefined) id = this.addIdToObject(obj);
         if (!this.registry[id]) this.addNewRegistryEntry(id, obj)
         return id
@@ -159,16 +241,16 @@ Object.subclass('ObjectGraphLinearizer',
         }
     },
     copyPropertiesAndRegisterReferences: function(source, copy) {
-        for (var key in source) {
-            if (!source.hasOwnProperty(key) || (key === this.idProperty && !this.keepIds)) continue;
+        Object.keys(source).forEach(function(key) {
+            if (!source.hasOwnProperty(key) || (key === this.idProperty && !this.keepIds)) return;
             try {
                 var value = source[key];
-                if (this.somePlugin('ignoreProp', [source, key, value, copy])) continue;
+                if (this.somePlugin('ignoreProp', [source, key, value, copy])) return;
                 copy[key] = this.registerWithPath(value, key);
             } catch(e) {
                 console.error('Serialization error: %s\n%s', e, e.stack);
             }
-        }
+        }, this);
     },
     copyObjectAndRegisterReferences: function(obj) {
         if (this.copyDepth > this.defaultCopyDepth) {
@@ -203,14 +285,14 @@ Object.subclass('ObjectGraphLinearizer',
         }
         recreated = this.somePlugin('deserializeObj', [registeredObj]) || {};
         this.setRecreatedObject(recreated, id); // important to set recreated before patching refs!
-        for (var key in registeredObj) {
+        Object.keys(registeredObj).forEach(function(key) {
             var value = registeredObj[key];
-            if (this.somePlugin('ignorePropDeserialization', [registeredObj, key, value])) continue;
+            if (this.somePlugin('ignorePropDeserialization', [registeredObj, key, value])) return;
             this.path.push(key); // for debugging
             recreated[key] = this.patchObj(value);
             this.path.pop();
-        };
-        this.letAllPlugins('afterDeserializeObj', [recreated, registeredObj]);
+        }, this);
+        this.letAllPlugins('afterDeserializeObj', [recreated, registeredObj, id]);
         return recreated;
     },
     patchObj: function(obj) {
@@ -242,7 +324,7 @@ Object.subclass('ObjectGraphLinearizer',
         try {
             var start = new Date();
             var ref = this.register(obj);
-            this.letAllPlugins('serializationDone', [this.registry]);
+            this.letAllPlugins('serializationDone', [this.registry, [ref.id]/*roots*/]);
             var simplifiedRegistry = this.simplifyRegistry(this.registry);
             var root = {id: ref.id, registry: simplifiedRegistry};
             this.log('Serializing done in ' + (new Date() - start) + 'ms');
@@ -251,7 +333,7 @@ Object.subclass('ObjectGraphLinearizer',
             this.log('Cannot serialize ' + obj + ' because ' + e + '\n' + e.stack);
             return null;
         } finally {
-            this.cleanup();
+            this.cleanup(this.registry);
         }
     },
     simplifyRegistry: function(registry) {
@@ -284,7 +366,7 @@ Object.subclass('ObjectGraphLinearizer',
         this.registry = this.createRealRegistry(jsoObj.registry);
         var result = this.recreateFromId(id);
         this.letAllPlugins('deserializationDone', [jsoObj]);
-        this.cleanup();
+        this.cleanup(this.registry);
         this.log('Deserializing done in ' + (new Date() - start) + 'ms');
         return result;
     },
@@ -295,6 +377,7 @@ Object.subclass('ObjectGraphLinearizer',
         if (!registry.isSimplifiedRegistry) return registry;
         var realRegistry = {};
         for (var id in registry)
+          if (id !== 'isSimplifiedRegistry')
             realRegistry[id] = this.createRegistryEntry(null, registry[id], id);
         return realRegistry;
     },
@@ -305,6 +388,66 @@ Object.subclass('ObjectGraphLinearizer',
         if (!rawCopy) throw new Error('Cannot copy ' + obj)
         return this.deserializeJso(rawCopy);
     },
+},
+'compaction', {
+
+    compactRegistry: function(registry, objectsToRemove, roots) {
+      // kind of a garbage collection on an existing registry object
+      // objectsToRemove and roots are optional
+      // Take registry, optionally remove objectsToRemove and then repeatedly
+      // remove those objects that aren't referenced anymore
+
+      var simplifiedRegistry = registry.registry ? registry : null;
+      registry = this.createRealRegistry(registry.registry || registry);
+      var referenceGraph = this.referenceGraph(registry);
+      var invertedReferenceGraph = this.invertedReferenceGraph(registry);
+      roots = (roots || []).map(String);
+      if (simplifiedRegistry) roots.pushIfNotIncluded(String(simplifiedRegistry.id));
+      objectsToRemove = (objectsToRemove || []).map(String).withoutAll(roots);
+      var removed = {};
+      var step = 0;
+
+      while (objectsToRemove.length && step++ < 10000) {
+        // removal
+        var toUpdate = objectsToRemove.reduce(function(toUpdate, removeId) {
+          if (removeId in removed) return toUpdate;
+
+          removed[removeId] = registry[removeId];
+          var refs = referenceGraph[removeId];
+          if (refs) {
+            toUpdate.pushAll(refs);
+            refs.forEach(function(id) {
+              if (invertedReferenceGraph[id])
+                invertedReferenceGraph[id].remove(removeId);
+            });
+          }
+          delete registry[removeId];
+          delete invertedReferenceGraph[removeId];
+          delete referenceGraph[removeId];
+          return toUpdate;
+        }, []);
+
+        // figure out what objects aren't referenced anymore to remove those next
+        objectsToRemove = toUpdate.reduce(function(toBeRemoved, id) {
+          if (!invertedReferenceGraph[id]
+           || !invertedReferenceGraph[id].length
+           || !Object.keys(lively.lang.graph.subgraphReachableBy(invertedReferenceGraph, id))
+                 .some(function(id) { return roots.indexOf(id) > -1; })) {
+            toBeRemoved.push(id);
+          }
+          return toBeRemoved;
+        }, []).withoutAll(roots);
+
+      };
+
+      this.cleanup(removed);
+
+      if (step >= 10000) console.error("Endless compaction");
+
+      return simplifiedRegistry ?
+        {id: simplifiedRegistry.id, registry: this.simplifyRegistry(registry)} :
+        registry;
+    }
 },
 'debugging', {
     log: function(msg) {
@@ -318,6 +461,7 @@ Object.subclass('ObjectGraphLinearizer',
 
 Object.extend(ObjectGraphLinearizer, {
     forLively: function() {
+        throw new Error("Deprecated");
         return this.withPlugins([
             new DEPRECATEDScriptFilter(),
             new ClosurePlugin(),
@@ -1148,6 +1292,114 @@ ObjectLinearizerPlugin.subclass('lively.persistence.ExprPlugin', {
     }
 });
 
+ObjectLinearizerPlugin.subclass('lively.persistence.AttributeConnectionGarbageCollectionPlugin', {
+    // Find attribute connection targets that are only referenced by attribute
+    // connections themselves. Here is how it works:
+    // 1. Remember the ids of the target objs while serializing. Also remember the
+    //    ids of a) the attribute connection and b) their varMapping onjs since those reference
+    //    the target object anyway but need to be filtered out later.
+    // 2. After the serialization traverse, run through the registry and create a
+    //    mapping from ref ids to owning object ids.
+    // 3. For each attribute target object figure out if it is referenced by
+    //    other objects except attribute connections (and their internals). If nothing, remove.
+
+
+    initialize: function($super) {
+      this.attributeConnectionClass = lively.bindings && lively.bindings.AttributeConnection;
+
+      this.persistentAttributeConnections = [];
+      this.disconnectOnDeserializationObjs = [];
+      this.attributeConnectionObjects = [];
+    },
+
+    weakRefsOfConnection: function(persistedConnectionId, persistedConnection) {
+      var ignore = [String(persistedConnectionId)]
+      var serializer = this.getSerializer();
+      ignore.pushAll(
+          serializer.allIdsReferencedBy(persistedConnection)
+            .without(persistedConnection.sourceObj
+              && String(persistedConnection.sourceObj.id)));
+      return ignore.uniq();
+    },
+
+    isGarbageCollectableConnection: function(original, persistentCopy) {
+      var klassName = persistentCopy && persistentCopy.__LivelyClassName__;
+      return this.attributeConnectionClass
+          && original instanceof this.attributeConnectionClass
+          && original.targetObj
+          && !!original.garbageCollect;
+    },
+
+    additionallySerialize: function(original, persistentCopy) {
+      if (!this.isGarbageCollectableConnection(original, persistentCopy)) return;
+      var id = this.getSerializer().getIdFromObject(original);
+      this.persistentAttributeConnections.push(id);
+    },
+
+    serializationDone: function(registry, roots) {
+      var serializer = this.getSerializer(),
+          plugin = this;
+
+      // 1. find the ids that belong to attribute connections and the
+      // connection targets
+      var connectionData = plugin.persistentAttributeConnections.map(function(id) {
+        var persistentCopy = serializer.getRegisteredObjectFromId(id);
+        return {
+          id: id,
+          persistentCopy: persistentCopy,
+          target: persistentCopy.targetObj && String(persistentCopy.targetObj.id),
+          weakRefs: plugin.weakRefsOfConnection(id, persistentCopy)
+        }
+      });
+
+      // 2. For each target obj, find all references (as ids) pointing to it
+      var graph = serializer.invertedReferenceGraph(registry);
+
+      // 3. Those target objs having more than just the attribute connection
+      // stuff pointing to it should be kept. The rest can go.
+      var toBeRemoved = lively.lang.arr.flatmap(connectionData, function(data) {
+
+        if (!data.target) return [data.id];
+
+        // exception
+        var registeredTarget = serializer.getRegisteredObjectFromId(data.target);
+        if (registeredTarget && registeredTarget.isCopyMorphRef) return [];
+
+        // can we reach roots from target without using the connection?
+        graph[data.target] = graph[data.target].withoutAll(data.weakRefs);
+        var hull = Object.keys(lively.lang.graph.subgraphReachableBy(graph, data.target));
+        if (roots.some(function(root) { return hull.indexOf(root) > -1; })) return [];
+
+        return data.weakRefs.concat([data.id, data.target]) ;
+      });
+
+      return serializer.compactRegistry(registry, toBeRemoved, roots);
+    },
+
+    // -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+    afterDeserializeObj: function(recreated) {
+      if (!recreated) return;
+      // 1.
+      if (recreated.attributeConnections)
+        this.attributeConnectionObjects.push(recreated);
+      // 2.
+      var klass = lively.bindings && lively.bindings.AttributeConnection;
+      if (klass && recreated instanceof klass && !recreated.targetObj)
+        this.disconnectOnDeserializationObjs.push(recreated);
+    },
+
+    deserializationDone: function() {
+      // 1.
+      this.attributeConnectionObjects.forEach(function(ea) {
+        ea.attributeConnections = ea.attributeConnections.compact();
+      });
+      // 2.
+      this.disconnectOnDeserializationObjs.invoke("disconnect");
+    }
+
+});
+
 ObjectLinearizerPlugin.subclass('lively.persistence.TypedArrayPlugin',
 'interface', {
     serializeObj: function(obj) {
@@ -1429,12 +1681,14 @@ Object.extend(lively.persistence.HTMLDocBuilder, {
 
 Object.extend(lively.persistence, {
     getPluginsForLively: function() {
-        return this.pluginsForLively.collect(function(klass) {
-            return new klass();
-        })
+        var plugins = lively.lang.arr.clone(this.pluginsForLively);
+        if (!lively.Config.get("garbageCollectAttributeConnections"))
+          plugins.remove(lively.persistence.AttributeConnectionGarbageCollectionPlugin);
+        return plugins.map(function(klass) { return new klass(); });
     },
 
     pluginsForLively: [
+        lively.persistence.AttributeConnectionGarbageCollectionPlugin,
         ClosurePlugin,
         StoreAndRestorePlugin,
         lively.persistence.TraitPlugin,
@@ -1448,7 +1702,8 @@ Object.extend(lively.persistence, {
         LayerPlugin,
         lively.persistence.DatePlugin,
         lively.persistence.TypedArrayPlugin,
-        lively.persistence.ExprPlugin]
+        lively.persistence.ExprPlugin,
+    ]
 });
 
 Object.extend(ObjectGraphLinearizer, {

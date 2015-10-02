@@ -3,7 +3,197 @@ module('lively.ide.codeeditor.modes.Diff').requires('lively.ide.codeeditor.ace',
 var git = lively.ide.git.Interface;
 var Mode = lively.ide.ace.require('ace/mode/diff').Mode;
 
+var Navigator = {
+
+    isInPatchHeader: function(ed, pos) {
+      var line = ed.session.getLine(pos.row);
+      return !!line.match(/^(diff|index|---|\+\+\_)/);
+    },
+
+    findAny: function(ed, needles, backwards, startPos) {
+      var merge = lively.lang.obj.merge;
+      var opts = {wrap: false, preventScroll: true, backwards: backwards};
+      var range = ed.saveExcursion(function(reset) {
+        if (startPos) {
+          ed.clearSelection();
+          ed.moveCursorToPosition(startPos);
+        }
+        ed.selection.moveCursorLineEnd();
+        var range;
+        needles.detect(function(needle) {
+          return range = ed.$morph.find(merge(opts, {needle: needle}));
+        });
+        reset();
+        return range;
+      });
+      return range ? range.start : null;
+    },
+
+    findPatchStart: function(ed, startPos) { return this.findAny(ed, [/^diff --git/, /^index/, /^---/, /^$/], true, startPos); },
+    findPatchEnd: function(ed, startPos) {
+      if (this.isInPatchHeader(ed, startPos)) {
+        var patchStart = this.findAny(ed, [/^@@ /, /^$/], false, startPos);
+        startPos = patchStart || startPos
+      }
+      return this.findAny(ed, [/^diff --git/, /^index/, /^---/, /^\+\+\+/, /^$/], false, patchStart);
+    },
+    findHunkStart: function(ed, startPos) {  return this.findAny(ed, [/^@@ /], true, startPos); },
+    findHunkEnd: function(ed, startPos) {
+      startPos = startPos || ed.getCursorPosition();
+      var hunkEnd = this.findAny(ed, [/^@@ /], false, startPos);
+      var patchEnd = this.findPatchEnd(ed, startPos);
+      if (!hunkEnd) return patchEnd;
+      if (!patchEnd) return hunkEnd;
+      return hunkEnd.row < patchEnd.row ? hunkEnd : patchEnd;
+    },
+
+    backwardSexp: function(ed) {
+      // nav = Navigator
+      var nav = this,
+          pos = ed.getCursorPosition(),
+          hunkStart = nav.findHunkStart(ed),
+          patchStart = nav.findPatchStart(ed);
+      if (lively.lang.obj.equals(pos, hunkStart)) {
+        ed.saveExcursion(function(reset) { ed.selection.moveCursorLeft(); hunkStart = nav.findHunkStart(ed); reset(); });
+        if (lively.lang.obj.equals(pos, hunkStart)) hunkStart = null;
+      }
+      if (lively.lang.obj.equals(pos, patchStart)) {
+        ed.saveExcursion(function(reset) { ed.selection.moveCursorLeft(); patchStart = nav.findPatchStart(ed); reset(); });
+        if (lively.lang.obj.equals(pos, patchStart)) patchStart = null;
+      }
+      if (!hunkStart && !patchStart) return;
+      var target;
+      if (!hunkStart) target = patchStart;
+      else if (!patchStart) target = hunkStart;
+      else if (hunkStart.row > patchStart.row) target = hunkStart
+      else target = patchStart;
+      ed.moveCursorToPosition(target);
+      ed.renderer.scrollCursorIntoView();
+    },
+
+    forwardSexp: function(ed) {
+      // nav = Navigator
+      // ed = that.aceEditor
+      var nav = this,
+          pos = ed.getCursorPosition(),
+          hunkEnd = nav.findHunkEnd(ed);
+      if (lively.lang.obj.equals(pos, hunkEnd)) {
+        ed.saveExcursion(function(reset) { ed.selection.moveCursorRight(); hunkEnd = nav.findHunkEnd(ed); reset(); });
+        if (lively.lang.obj.equals(pos, hunkEnd)) hunkEnd = null;
+      }
+      if (!hunkEnd) return;
+      ed.moveCursorToPosition(hunkEnd);
+      ed.renderer.scrollCursorIntoView();
+    },
+
+    backwardUpSexp: function(ed) {
+      // nav = Navigator
+      var nav = this,
+          pos = ed.getCursorPosition(),
+          patchStart = nav.findPatchStart(ed);
+      if (!patchStart) return;
+      ed.moveCursorToPosition(patchStart);
+      ed.renderer.scrollCursorIntoView();
+    },
+
+    forwardDownSexp: function(ed) { show("Not yet implemented"); },
+
+  // -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+  // expansion
+
+    findContainingHunkOrPatchRange: function(ed, startingRange) {
+      startingRange = startingRange || ed.getSelectionRange();
+
+      var newRange;
+      var Range = lively.ide.ace.require("ace/range").Range;
+      var hunkStart = this.findHunkStart(ed, startingRange.end);
+      var hunkEnd = hunkStart && this.findHunkEnd(ed, hunkStart);
+      var patchStart = this.findPatchStart(ed, startingRange.start);
+      var patchEnd = patchStart && this.findPatchEnd(ed, patchStart);
+
+      // patchStart && patchEnd && show("%o %o", patchStart.row, patchEnd.row);
+      // hunkStart && hunkEnd && show("%o %o", hunkStart.row, hunkEnd.row);
+
+      if (patchStart && patchEnd && startingRange.start.row == patchStart.row && startingRange.end.row == patchEnd.row)
+        return null;
+      if (hunkEnd && patchEnd && hunkEnd.row >= patchEnd.row && startingRange.start.row <= hunkStart.row)
+        hunkEnd = null;
+
+      if (hunkStart &&  hunkStart.row < patchStart.row) hunkStart = null;
+      // if (hunkEnd.row < patchEnd.row) hunkEnd = null;
+
+      if (!startingRange || (hunkStart && hunkEnd && startingRange.start.row >= hunkStart.row && startingRange.end.row <= hunkEnd.row)) {
+        // show("1");
+        newRange = Range.fromPoints(hunkStart, hunkEnd);
+      } else if (patchStart && patchEnd && startingRange.start.row >= patchStart.row && startingRange.end.row <= patchEnd.row) {
+        // show("2");
+        newRange = Range.fromPoints(patchStart, patchEnd);
+      } else {
+        // show("3");
+        newRange = null;
+      }
+      return newRange;
+    },
+
+    expandRegion: function(ed, src, ast, expandState) {
+
+      var newRange = this.findContainingHunkOrPatchRange(ed, ed.getSelectionRange());
+      if (!newRange) return expandState;
+
+      return {
+          range: [
+            ed.posToIdx(newRange.start),
+            ed.posToIdx(newRange.end)],
+          prev: expandState
+      }
+
+      var startIdx = expandState.range[0];
+      var endIdx = expandState.range[1];
+      var start = ed.idxToPos(startIdx);
+      var end = ed.idxToPos(endIdx);
+      var newExpandRange = [];
+
+      ed.saveExcursion(function(reset) {
+        ed.clearSelection();
+        ed.moveCursorToPosition(start);
+        this.backwardSexp(ed);
+        newExpandRange[0] = ed.posToIdx(ed.getCursorPosition());
+        ed.moveCursorToPosition(end);
+        this.forwardSexp(ed);
+        newExpandRange[1] = ed.posToIdx(ed.getCursorPosition());
+        reset();
+      }.bind(this));
+
+      if (startIdx === endIdx) {
+        // ...
+      } else {
+        if (newExpandRange[0] < startIdx) newExpandRange[1] = endIdx;
+        else if (newExpandRange[1] > endIdx) newExpandRange[0] = startIdx;
+        else return expandState;
+      }
+
+      return {
+          range: newExpandRange,
+          prev: expandState
+      }
+
+    },
+
+    contractRegion: function(ed, src, ast, expandState) {
+        return expandState.prev || expandState;
+    }
+
+};
+
+lively.ide.codeeditor.modes.Diff.Navigator = Navigator;
+
+// -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
 Mode.addMethods({
+
+    getCodeNavigator: function() {
+      return Navigator;
+    },
 
     commands: {
 
@@ -12,14 +202,14 @@ Mode.addMethods({
               var mode = ed.session.getMode(),
                   hasSelection = !ed.selection.isEmpty(),
                   patches;
-  
+
               if (!hasSelection) {
                 var patchInfo = mode.getPatchAtCursor(ed);
                 patches = patchInfo.patch ? [patchInfo.patch] : null;
               } else {
                 patches = mode.getPatchFromSelection(ed);
               }
-  
+
               if (!patches || !patches.length) {
                 ed.$morph.setStatusMessage("Cannot read patch");
               } else {
@@ -41,7 +231,7 @@ Mode.addMethods({
                 ed.$morph.setStatusMessage("Cannot read patch");
                 return;
               }
-  
+
               var lineNo = patchInfo.selectedHunk.relativeOffsetToFileLine(patchInfo.cursorOffsetInHunk);
               var filePath = patchInfo.selectedHunk.fileNameB;
               if (!filePath.match(/^(\/|[a-z]:\\)/i)) { // not an absolute path
@@ -49,6 +239,37 @@ Mode.addMethods({
               }
               lively.ide.openFile(filePath + ":" + lineNo);
           }
+        },
+
+        "lively.ide.git.commit": {
+            exec: function(ed, args) {
+              lively.ide.git.Interface.gitCommit({}, function(err, cmd) {
+                if (err) ed.$morph.showError(err);
+                else ed.$morph.setStatusMessage("Commit successful");
+              });
+            }
+        },
+
+        "lively.ide.git.update": {
+            exec: function(ed, args) {
+              lively.lang.fun.composeAsync(
+                function(n) {
+                  var histId = "lively.ide.codeeditor.modes.Diff.git-update";
+                  var hist = lively.ide.tools.CommandLine.getHistory(histId);
+                  var input = (hist & hist.items && hist.items[0]) || "git diff";
+                  $world.prompt("git diff command", function(input) {
+                    n(input ? null : new Error("command canceled"), input);
+                  }, {input: input, historyId: histId})
+                },
+                function(cmdString, n) {
+                  lively.shell.run(cmdString, function(err, cmd) {
+                    if (err) return n(err + "\n" + (cmd ? cmd.resultString(true) : ""));
+                    ed.$morph.textString = cmd.getStdout();
+                    n(null);
+                  });
+                }
+              )(function(err) { if (err) ed.$morph.showError(err); });
+            }
         },
 
         "lively.ide.git.stageSelection": {
@@ -94,7 +315,9 @@ Mode.addMethods({
         "lively.ide.git.discardSelection":      "alt-k",
         "lively.ide.git.discardAll":            "alt-shift-k",
         "lively.ide.git.applySelection":        "alt-a",
-        "lively.ide.git.reverseApplySelection": "alt-r"
+        "lively.ide.git.reverseApplySelection": "alt-r",
+        "lively.ide.git.commit":                "alt-c",
+        "lively.ide.git.update":                "alt-g"
     },
 
     keyhandler: null,
@@ -113,9 +336,13 @@ Mode.addMethods({
         ed.commands.addCommands(this.commands);
         this.initKeyHandler();
         ed.keyBinding.addKeyboardHandler(this.keyhandler);
+        // FIXME: only needed to make expandRegion work, can go when ace.ext
+        // calls expandRegion even if no ed.session.$ast exists
+        ed.session.$ast = {};
     },
 
     detach: function(ed) {
+        delete ed.session.$ast;
         ed.commands.removeCommands(this.commands);
         this.keyhandler = null;
         ed.keyBinding.removeKeyboardHandler(this.keyhandler);
@@ -129,11 +356,14 @@ Mode.addMethods({
           {isMenuItem: true, isDivider: true},
           ["open file at patch", function() { editor.aceEditor.execCommand("lively.ide.patch.openFileAtCursor"); }],
           ["show selected patch", function() { editor.aceEditor.execCommand("lively.ide.patch.showSelectedPatch"); }],
-          ["stage "   + (hasSelection ? "selection" : "everything"), function() { editor.aceEditor.execCommand("lively.ide.git.stage" + (hasSelection ? "Selection" : "All")); }],
-          ["unstage " + (hasSelection ? "selection" : "everything"), function() { editor.aceEditor.execCommand("lively.ide.git.unstage"  + (hasSelection ? "Selection" : "All")); }],
-          ["discard " + (hasSelection ? "selection" : "everything"), function() { editor.aceEditor.execCommand("lively.ide.git.discard"  + (hasSelection ? "Selection" : "All")); }],
-          ["apply selection",                                        function() { editor.aceEditor.execCommand("lively.ide.diff.applySelection"); }]
-          ["reverse apply selection",                                function() { editor.aceEditor.execCommand("lively.ide.diff.reverseApplySelection"); }]
+          ["apply selection",                                        function() { editor.aceEditor.execCommand("lively.ide.diff.applySelection"); }],
+          ["reverse apply selection",                                function() { editor.aceEditor.execCommand("lively.ide.diff.reverseApplySelection"); }],
+          ["[git] stage "   + (hasSelection ? "selection" : "everything"), function() { editor.aceEditor.execCommand("lively.ide.git.stage" + (hasSelection ? "Selection" : "All")); }],
+          ["[git] unstage " + (hasSelection ? "selection" : "everything"), function() { editor.aceEditor.execCommand("lively.ide.git.unstage"  + (hasSelection ? "Selection" : "All")); }],
+          ["[git] discard " + (hasSelection ? "selection" : "everything"), function() { editor.aceEditor.execCommand("lively.ide.git.discard"  + (hasSelection ? "Selection" : "All")); }],
+          ["[git] stage "   + (hasSelection ? "selection" : "everything"), function() { editor.aceEditor.execCommand("lively.ide.git.stage" + (hasSelection ? "Selection" : "All")); }],
+          ["[git] update diff...", function() { editor.aceEditor.execCommand("lively.ide.git.update"); }],
+          ["[git] commit...", function() { editor.aceEditor.execCommand("lively.ide.git.commit"); }],
         ]);
 
         return items;
@@ -225,7 +455,7 @@ Mode.addMethods({
           endOfCurrentLine = {column: editor.getSession().getLine(row).length, row: row},
           line = editor.getSession().getLine(row),
           // inside a thing marked with @@ ?
-          insideHunk = line.match(/^(@@|\s|\+|\-|$)/) && !line.match(/^(--- |\+\+\+ )/),
+          insideHunk = line.match(/^(@@|\s|\+|\-|\\|$)/) && !line.match(/^(--- |\+\+\+ )/),
           selectedHunk, cursorOffsetInSelectedHunk;
 
       if (insideHunk) {

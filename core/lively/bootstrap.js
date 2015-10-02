@@ -246,7 +246,13 @@
                         for (var i = 0; i < consumers.length; i++) {
                             var consumerFunc = consumers[i][name];
                             if (consumerFunc) {
-                                consumerFunc.apply(consumers[i], arguments);
+                                try {
+                                    consumerFunc.apply(consumers[i], arguments);
+                                } catch (e) {
+                                    (console.$error || console.error)(
+                                        "Platform consumer %s errored on %s\nOriginal message:\n",consumers[i], name);
+                                    if (console["$"+name]) console["$"+name].apply(console, arguments);
+                                }
                             }
                         }
                     };
@@ -585,6 +591,27 @@
                     this.loadViaXHR(loadSync, exactUrl, onLoadCb) :
                     this.loadViaScript(exactUrl, onLoadCb);
             },
+
+        loadAllLibs: function(urlsAndTests,thenDo){
+            /*
+            Takes an array of Libraries to be loaded as well as true conditions for each.
+            In the form:
+            {url: library url,
+            test: loadtest function for library}
+            */
+
+            lively.lang.arr.mapAsyncSeries(
+            urlsAndTests,
+            function tester(urlAndTest, _, next) {
+              Global.JSLoader.loadJs(urlAndTest.url);
+              lively.lang.fun.waitFor(
+                1000, urlAndTest.test, next);
+            },
+            function(err) {
+              show(err ? "Got a timeout loading a lib " + err : "loaded libs");
+              thenDo(err);
+            });
+        },
 
         loadJSON: function(url, onLoadCb, beSync) {
             this.getViaXHR(beSync, url, function(err, content, headers) {

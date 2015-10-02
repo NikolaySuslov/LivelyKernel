@@ -153,9 +153,9 @@ Object.extend(lively.morphic, {
             return lively.morphic.World.current().openInspectorFor(obj);
     },
 
-    edit: function(obj) {
-        if (Global.lively && lively.morphic && lively.morphic.World.current())
-            lively.morphic.World.current().openObjectEditorFor(obj);
+    edit: function(/*obj, method, ...*/) {
+      var world = Global.lively && lively.morphic && lively.morphic.World.current();
+      if (world) world.openObjectEditorFor.apply(world, arguments);
     },
 
     showCallStack: function() {
@@ -532,7 +532,7 @@ lively.morphic.Morph.addMethods(
         this.cachedBounds = null;
         return this.morphicSetter('FixedPosition', bool);
     },
-    hasFixedPosition: function(bool) {
+    hasFixedPosition: function() {
         return this.morphicGetter('FixedPosition') || false;
     },
     setFixed: function(optFixed) {
@@ -1799,6 +1799,7 @@ Trait('lively.morphic.SetStatusMessageTrait', {
 
   showError: function (e, offset) {
       this.setStatusMessage(String(e), Color.red);
+      if (e.stack) this._statusMorph.insertion = e.stack;
   }
 
 });

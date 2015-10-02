@@ -38,6 +38,10 @@ Object.subclass('lively.ide.CommandLineInterface.Command',
 
     getGroup: function() { return this._options.group || null; },
 
+    getStartTime: function() { return this._startTime ? new Date(this._startTime) : null; },
+
+    getEndTime: function() { return this._endTime ? new Date(this._endTime) : null; },
+
     kill: function(signal, thenDo) {
       var group = this.getGroup() || lively.ide.CommandLineInterface.defaultGroup;
       if (this._done) {
@@ -108,6 +112,7 @@ Object.subclass('lively.ide.CommandLineInterface.Command',
 
     startRequest: function() {
         var webR = this.getWebResource();
+        this._startTime = Date.now();
         if (this._options.sync) webR.beSync(); else webR.beAsync();
         lively.bindings.connect(webR, 'status', this, 'endRequest', {
             updater: function($upd, status) {
@@ -129,6 +134,7 @@ Object.subclass('lively.ide.CommandLineInterface.Command',
 
     endRequest: function(status) {
         this._done = true;
+        this._endTime = Date.now();
         this.endInterval();
         this.read(status.transport.responseText);
         lively.bindings.signal(this, 'end', this);
@@ -188,6 +194,7 @@ lively.ide.CommandLineInterface.Command.subclass('lively.ide.CommandLineInterfac
         if (this._started) return this;
 
         this._started = true;
+        this._startTime = Date.now();
         var cmdInstructions = {
             command: this.getCommand(),
             cwd: this._options.cwd,
@@ -228,6 +235,7 @@ lively.ide.CommandLineInterface.Command.subclass('lively.ide.CommandLineInterfac
     onEnd: function(exitCode) {
         this._code = exitCode;
         this._done = true;
+        this._endTime = Date.now();
         lively.bindings.signal(this, 'end', this);
         var group = this.getGroup() || lively.ide.CommandLineInterface.defaultGroup;
         if (lively.shell.isScheduled(this, group)) lively.shell.unscheduleCommand(this, group);
@@ -666,7 +674,7 @@ Object.extend(lively.ide.CommandLineInterface, {
     },
 
     ls: function(path, thenDo) {
-      return lively.ide.CommandLineSearch.findFiles("*", {cwd: path, depth: 1}, function(err, result) {
+      return lively.ide.CommandLineSearch.findFiles("*", {rootDirectory: path, cwd: path, depth: 1}, function(err, result) {
         thenDo && thenDo(null, result); });
     },
 
@@ -955,16 +963,16 @@ Object.extend(lively.ide.CommandLineSearch, {
             parseDirectoryList = lively.ide.FileSystem.parseDirectoryListFromLs,
             lastFind = lively.ide.CommandLineSearch.lastFind;
         if (lastFind) lastFind.kill();
-        var result = [],
-            cmd = lively.ide.CommandLineInterface.exec(commandString, options, function(err, cmd) {
-              lively.ide.CommandLineSearch.lastFind = null;
-              var err = cmd.getCode() != 0 ? cmd.resultString(true) : null;
-              if (err) console.warn(err);
-              result = !err && parseDirectoryList(cmd.getStdout(), rootDirectory);
-              callback && callback(err, result || []);
-            });
-        lively.ide.CommandLineSearch.lastFind = cmd;
-        return options.sync ? result : cmd;
+        var result = [];
+        lively.ide.CommandLineSearch.lastFind = lively.shell.run(commandString, options, function(err, cmd) {
+          if (cmd === lively.ide.CommandLineSearch.lastFind)
+            lively.ide.CommandLineSearch.lastFind = null;
+          var err = cmd.getCode() != 0 ? cmd.resultString(true) : null;
+          if (err) console.warn(err);
+          result = !err && parseDirectoryList(cmd.getStdout(), rootDirectory);
+          callback && callback(err, result || [], cmd);
+        });
+        return options.sync ? result : lively.ide.CommandLineSearch.lastFind;
     },
 
     interactivelyChooseFileSystemItem: function(prompt, rootDir, fileFilter, narrowerName, actions, initialCandidates, offerCreation) {
@@ -1298,7 +1306,7 @@ Object.extend(lively.ide.FilePatch, {
           // split it at diff ... index
           var last = patchLines.last();
           if (!last) patchLines.push([line]);
-          else if (line.match(/^(---|\+\+\+|@@|-|\+| )/)) last.push(line);
+          else if (line.match(/^(---|\+\+\+|@@|-|\+|\\| )/)) last.push(line);
           else if (last.length === 1) {
             // if we have just read the command the next line is probably an index... that we don't need
             /*ignore*/
@@ -1349,7 +1357,7 @@ Object.subclass("lively.ide.FilePatchHunk",
 
         // parse context/addition/deletions
         this.lines = [];
-        while (lines[0] && lines[0].match(/^[\+\-\s]/)) {
+        while (lines[0] && lines[0].match(/^[\+\-\s\\]/)) {
             this.lines.push(lines.shift());
         }
         this.length = this.lines.length + 1; // for header

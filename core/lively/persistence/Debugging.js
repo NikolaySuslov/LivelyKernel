@@ -23,6 +23,141 @@
 
 module('lively.persistence.Debugging').requires().toRun(function() {
 
+Object.extend(lively.persistence.Debugging, {
+
+  svgGrawGraph: function(graphMap, snapshot, options) {
+    options = lively.lang.obj.merge({
+      asWindow: true,
+      idsToHighlight: [],
+      inverse: true,
+      convertNodesAndEdgesToMorphs: false,
+      graphSettings: [],
+      labelWithReferencePaths: true
+    }, options);
+
+    if (!module("apps.Graphviz").isLoaded()) module("apps.Graphviz").load(true);
+
+    var lines = options.labelWithReferencePaths ?
+      createDotLinesForEachRefPath(graphMap, snapshot) :
+      createDotLinesSimple(graphMap, snapshot);
+
+    return drawGraph(lines, options.idsToHighlight);
+
+    // -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+    function createDotLinesSimple(graphMap, snapshot) {
+      return lively.lang.arr.flatmap(Object.keys(graphMap), function(id) {
+        return lively.lang.arr.flatmap(graphMap[id] || [], function(id2) {
+          var lines = [];
+          var from = options.inverse ? id2 : id;
+          var to = options.inverse ? id : id2;
+          lines.push(lively.lang.string.format("%s -> %s", graphName(from, snapshot), graphName(to, snapshot)));
+          return lines;
+        });
+      }).uniq().concat((options.idsToHighlight || []).map(function(id) { return graphName(id, snapshot) + " [style=filled, fillcolor=orange]"; }));
+    }
+
+    function createDotLinesForEachRefPath(graphMap, snapshot) {
+      var serializer = lively.persistence.Serializer.createObjectGraphLinearizer();
+      var refGraph = serializer.referenceGraphWithPaths(snapshot.registry || snapshot);
+
+      return lively.lang.arr.flatmap(Object.keys(graphMap), function(id) {
+        return lively.lang.arr.flatmap(graphMap[id] || [], function(id2) {
+          var lines = [];
+          var from = options.inverse ? id2 : id;
+          var to = options.inverse ? id : id2;
+          var paths = refGraph[from][to] || [];
+          paths.forEach(function(path) {
+            lines.push(lively.lang.string.format("%s -> %s [label=%s]",
+              graphName(from, snapshot), graphName(to, snapshot),
+              labelName(from, to, path)));
+          })
+          return lines;
+        });
+      }).uniq().concat((options.idsToHighlight || []).map(function(id) { return graphName(id, snapshot) + " [style=filled, fillcolor=orange]"; }));
+    }
+
+    function drawGraph(dotLines) {
+      
+
+      options = lively.lang.obj.merge(options, {createNodesAndEdges: function() { return dotLines; }});
+      var svgGraph = apps.Graphviz.Renderer.render(options).openInWorld().comeForward();
+
+      return svgGraph;
+    }
+
+    function createDotFile(dotLines) {
+      var dotContent = "digraph G {\n" + dotLines.join("\n") + "}\n";
+
+      lively.lang.fun.composeAsync(
+        function(n) {
+          lively.shell.writeFile("/Users/robert/Lively/LivelyKernel/test.dot", dotContent, function(err, cmd) { n(); });
+        }
+        // function(n) {
+        //   lively.shell.run("dot test.dot -Tpng -o test.png;", n);
+        // }
+      )(function(err) { show(err ? String(err) : "done"); });
+    }
+
+    function graphName(id, snapshot) {
+      var obj = snapshot.registry[id],
+          name = "obj";
+      if (!obj) name = "deleted-object";
+      else if (obj[ClassPlugin.prototype.classNameProperty])
+        name = obj[ClassPlugin.prototype.classNameProperty]
+      return lively.lang.string.format('"%s:%s"', id, name);
+    }
+
+    function labelName(fromId, toId, path) {
+      return '"' + path.reduce(function(pathString, part) {
+        return pathString + (typeof part === "number" ? "[" + part + "]" : "." + part);
+      }, "") + '"';
+    }
+
+  },
+
+  svgGraphForSerializedObjectGraph: function(snapshot, options) {
+    options = lively.lang.obj.merge({inverse: true}, options);
+    var serializer = lively.persistence.Serializer.createObjectGraphLinearizer()
+    serializer.registry = serializer.createRealRegistry(snapshot.registry);
+    var graph = serializer.invertedReferenceGraph(snapshot.registry);
+    var graphMethod = options.inverse ? "invertedReferenceGraph" : "referenceGraph";
+    var graph = serializer[graphMethod](snapshot.registry);
+    return this.svgGrawGraph(graph, snapshot, options);
+  },
+
+  svgGraphForWorld: function(url, options) {
+    var html = new URL(url).asWebResource().forceUncached().get().content;
+    var roughly = html.slice(html.indexOf('"text/x-lively-world"')+6, html.lastIndexOf("</script>"))
+    var json = roughly.slice(roughly.indexOf('{'))
+    var jso = JSON.parse(json);
+    return this.svgGraphForSerializedObjectGraph(jso, options);
+  },
+
+  svgGraphForPart: function(partName, partCategory, options) {
+    var url = lively.PartsBin.getPartItem(partName, partCategory).getFileURL();
+    var json = url.asWebResource().get().content;
+    var jso = JSON.parse(json);
+    return this.svgGraphForSerializedObjectGraph(jso, options);
+  },
+
+  svgGraphForObject: function(obj, options) {
+    options = lively.lang.obj.merge({withoutWorld: true}, options);
+    return this.svgGraphForSerializedObjectGraph(snapshot(obj), options);
+
+    function snapshot(obj) {
+      var serializer = lively.persistence.Serializer.createObjectGraphLinearizerForCopy(),
+          dontCopyWorldPlugin = new GenericFilter();
+      dontCopyWorldPlugin.addFilter(function(obj, propName, value) {
+          return value === lively.morphic.World.current(); });
+      if (options.withoutWorld)
+        serializer.addPlugin(dontCopyWorldPlugin);
+      serializer.serializeToJso(obj)
+      return {registry: serializer.simplifyRegistry(serializer.registry)};
+    }
+  }
+});
+
 ObjectGraphLinearizer.addMethods(
 'debugging', {
     serializedPropertiesOfId: function(id) {
@@ -257,7 +392,7 @@ Object.subclass('lively.persistence.Debugging.Helper',
             toString: function() {
                 var classItems = this.sortedEntries().collect(function(tuple) {
                         return [Numbers.humanReadableByteSize(tuple.bytes),
-                            tuple.count, 
+                            tuple.count,
                             Numbers.humanReadableByteSize(tuple.bytes / tuple.count),
                             tuple.name];
                     }, this);

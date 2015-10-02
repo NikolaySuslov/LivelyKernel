@@ -11,6 +11,7 @@
       "node_modules/lively.lang/lib/object.js",
       "node_modules/lively.lang/lib/collection.js",
       "node_modules/lively.lang/lib/tree.js",
+      "node_modules/lively.lang/lib/graph.js",
       "node_modules/lively.lang/lib/function.js",
       "node_modules/lively.lang/lib/string.js",
       "node_modules/lively.lang/lib/number.js",
@@ -196,7 +197,8 @@
     ["keepSerializerIds", false],
     ["createWorldPreview", true, "Whether to store an HTML document showing a static version of the serialized world."],
     ["manuallyCreateWorld", false, "Loads up Lively and creates a complete new world from scratch instead of using a serialized one."],
-    ["removeDOMContentBeforeWorldLoad", true, "Whether to remove all the DOM child nodes of the DOM element that is used to display the World."]
+    ["removeDOMContentBeforeWorldLoad", true, "Whether to remove all the DOM child nodes of the DOM element that is used to display the World."],
+    ["garbageCollectAttributeConnections", true, "Will remove connections and connected objects when connection targets in the object graph can only be reached through the connection itself. Can be disabled per connection using the garbageCollect: false option."]
   ],
 
   "lively.Storage": [
@@ -348,6 +350,8 @@
     ["improvedJavaScriptEval", true, "Eval that changes semantics of how object literals and if statements are evaluated."],
     ["showImprovedJavaScriptEvalErrors", false, "Visibly show errors when improved JavaScript eval transformation fail"],
     ["aceDefaultUseIyGotoChar", true, "Quickly jump to next / prev characters using Cmd/Ctrl-, and Cmd/Ctrl-. "],
+    ["evalMarkersEnabled", true, "Eval markers are code selections that can be rerun by pressing a code. Useful for live development and quick testing."],
+    ["codeEditorMenuShowsSettings", true, "Include the settings menu item in the codeeditor context menu"],
     {
       "name": "useEmacsyKeys",
       "type": "Boolean",
@@ -428,7 +432,19 @@
   ],
 
   "lively.morphic.tools.MenuBar": [
-    ["showMenuBar", false, "Should a menu bar be opened on world load?"],
+
+    ["showMenuBar", true, "Should a menu bar be opened on world load?"],
+    {
+      "name": "menuBarEntries",
+      "type": "Array",
+      "doc": "The actual menubar entries currently loaded",
+      "get": {
+          "type": "function",
+          "code": "function() { return lively.Config._menuBarEntries || (lively.Config._menuBarEntries = lively.Config.get('menuBarDefaultEntries')); }"
+      },
+      "set": {"type": "function", "code": "function(v) { lively.Config.menuBarEntries.pushIfNotIncluded(v); lively.morphic.tools.MenuBar.addEntries(v); }"}
+    },
+
     ["menuBarDefaultEntries", [
       "lively.net.tools.Lively2Lively",
       "lively.morphic.tools.LivelyMenuBarEntry",
@@ -441,8 +457,8 @@
 
 
   "languageDictionary": [
-     ["russian", 
-      {"PartsBin": "Каталог образов", 
+     ["russian",
+      {"PartsBin": "Каталог образов",
         "Parts": "Примитивы",
         "Preferences": "Настройки",
         "Object Editor": "Редактор объектов",
@@ -461,7 +477,7 @@
 
   "lively.VM": [
     ["useJsx", true, "jsx is a JS language extension for the react framework. When enabled code editors will know how to parse jsx."],
-    ["useBabelJsForEval", true, "babel.js is an ES6 / JSX transformer. When enabled will be used to transform evaled code."],
+    ["useBabelJsForEval", false, "babel.js is an ES6 / JSX transformer. When enabled will be used to transform evaled code."],
     ["useBabelJsForScriptLoad", false, "babel.js is an ES6 / JSX transformer. When enabled will be used to transform evaled code."]
   ]
 

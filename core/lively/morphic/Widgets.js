@@ -819,7 +819,8 @@ lively.morphic.Box.subclass('lively.morphic.Menu',
     paddingLeft: 20,
     isEpiMorph: true,
     isMenu: true,
-    removeOnMouseOut: false
+    removeOnMouseOut: false,
+    doNotSerialize: ["lastFocusedMorph"]
 
 },
 'initializing', {
@@ -1875,36 +1876,6 @@ lively.morphic.World.addMethods(
         return editor;
     },
 
-    openAboutBox: function() {
-        var text = this.addTextWindow({title: 'About Lively Kernel'});
-        text.owner.setExtent(pt(390, 105));
-        var webR = new WebResource(new URL(Config.rootPath));
-        var licenseURL = 'http://lively-kernel.org/license/index.html';
-        var headRevision = webR.getHeadRevision().headRevision;
-        var repositoryString = 'Repository: ' + Config.rootPath;
-        var revisionString = '\n\nRevision: ' + headRevision;
-        var licenseString = '\n\nLicense: ' + licenseURL;
-        text.setTextString(repositoryString + revisionString + licenseString);
-        text.changeEmphasis('Repository: '.length, repositoryString.length + 1, function(emph, doEmph) {
-            doEmph({uri: Config.rootPath});
-        });
-        text.changeEmphasis(repositoryString.length + revisionString.length + '\n\nLicense: '.length, repositoryString.length + revisionString.length + licenseString.length + 1, function(emph, doEmph) {
-            doEmph({uri: licenseURL});
-        });
-        text.setSelectionRange(0,0)
-        return text;
-    },
-    openBootstrapParts: function() {
-        // load the bootstrap part from webwerkstat
-        // this part can fetch all his friends :-)
-        var oldRootPath = Config.rootPath
-        try {
-            Config.rootPath = 'http://lively-kernel.org/repository/webwerkstatt/'
-            this.openPartItem("BootstrapParts", "PartsBin/Tools")
-        } finally {
-            Config.rootPath = oldRootPath
-        }
-    },
     openSystemConsole: function() {
         lively.ide.commands.exec("lively.ide.openSystemConsole");
     },
@@ -2149,8 +2120,6 @@ lively.morphic.World.addMethods(
             ],
             ['Debugging', this.debuggingMenuItems(world)],
             ['Wiki', [
-                // ['About this wiki', this.openAboutBox.bind(this)],
-                // ['Bootstrap parts from webwerkstatt', this.openBootstrapParts.bind(this)],
                 ['View versions of this world', this.openVersionViewer.bind(this, URL.source)],
                 ['Download world', function() {
                     require('lively.persistence.StandAlonePackaging').toRun(function() {
@@ -2994,6 +2963,7 @@ lively.morphic.Box.subclass('lively.morphic.ReframeHandle',
         if (this.type === 'right' || this.type === 'corner') { style.moveHorizontal = true; }
         if (this.type === 'bottom' || this.type === 'corner') { style.moveVertical = true; }
         this.applyStyle(style);
+        this.disableDropping();
     }
 },
 'event handling', {
@@ -3081,18 +3051,12 @@ Object.subclass('lively.morphic.App',
 
 lively.morphic.App.subclass('lively.morphic.AbstractDialog',
 'documentation', {
-
     connections: ['result']
-
 },
 'properties', {
-
     doNotSerialize: ['lastFocusedMorph'],
-
     initialViewExtent: lively.pt(300, 90),
-
     inset: 4
-
 },
 'initializing', {
 
