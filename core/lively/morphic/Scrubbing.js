@@ -25,12 +25,9 @@ Trait("lively.morphic.Scrubbing",
 
   },
 
-  updateScrubbingFromEvent: function(evt) {
-      return this.owner ? this.updateScrubbing(evt.getPosition()) : false;
-  },
-
-  updateScrubbing: function(handPosition) {
-      var scrubbing = this.scrubbingState,
+  updateScrubbing: function(evt) {
+      var handPosition = evt.getPosition(),
+          scrubbing = this.scrubbingState,
           startMarker = scrubbing.startMarker,
           handMarker = scrubbing.handMarker,
           posForHandmarker = startMarker.getGlobalTransform().inverse().transformPoint(handPosition);
@@ -68,10 +65,12 @@ Trait("lively.morphic.Scrubbing",
       }
       scrubbing.updateState.lastPos = handMarker.bounds().center();
 
-      this.updateMorphWithNewScrubValue(newValue);
+      this.onScrubbingUpdate(evt, scrubbing, newValue);
   },
 
-  startScrubbing: function(globalPos, startValue, mode) {
+  startScrubbing: function(evt, startValue, mode) {
+      if (!this.scrubbingState) this.initScrubbingState();
+      var globalPos = evt.getPosition();
       var scrubbing = this.scrubbingState;
       scrubbing.startValue = startValue;
       scrubbing.mode = "number";
@@ -100,7 +99,9 @@ Trait("lively.morphic.Scrubbing",
       // if (startMarker.owner !== this) this.addMorph(startMarker);
       if (startMarker.owner !== $world) $world.addMorph(startMarker);
       startMarker.setPositionCentered(globalPos);
-      this.updateScrubbing(globalPos);
+
+      this.onScrubbingStart(evt, scrubbing);
+      this.updateScrubbing(evt);
 
   // -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
@@ -121,39 +122,54 @@ Trait("lively.morphic.Scrubbing",
   // -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
   },
 
-  stopScrubbing: function() {
+  stopScrubbing: function(evt) {
     var scrubbing = this.scrubbingState;
 
     scrubbing.mode = null;
     scrubbing.startValue = null;
 
     if (scrubbing.startMarker) scrubbing.startMarker.remove();
+
+    this.onScrubbingEnd(evt, scrubbing);
   }
 
 },
 "events", {
 
-  onDrag: function onDrag(evt) {
-    if (this.isScrubbing()) this.updateScrubbingFromEvent(evt);
+  onDrag: function(evt) {
+    if (this.isScrubbing()) this.updateScrubbing(evt);
     evt.stop();
   },
 
-  onDragEnd: function onDragEnd(evt) {
-    if (this.isScrubbing()) this.stopScrubbing();
+  onDragEnd: function(evt) {
+    if (!this.isScrubbing()) return false;
+    this.stopScrubbing();
+    evt.stop(); return true;
   },
 
-  onDragStart: function onDragStart(evt) {
-    this.startScrubbing(
-      evt.getPosition(),
-      this.getScrubbingStartValue(evt.getPosition()),
-      this.getScrubbingMode(evt.getPosition()));
-  }
+  onDragStart: function(evt) {
+    if (!this.isScrubbing()) {
+      var val = this.getScrubbingStartValue(evt.getPosition());
+      var mode = this.getScrubbingMode(evt.getPosition());
+      if (!mode) return false;
+      if (mode === "number" && (!Object.isNumber(val) || isNaN(val))) return false;
+      this.startScrubbing(evt, val, mode);
+      evt.stop(); return true;
+    }
+    return false;
+  },
+
+  onMouseUp: function(evt) { return this.onDragEnd(evt); },
+  onMouseDown: function(evt) { return this.onDragStart(evt); }
 
 },
 "morphic integration", {
 
-  updateMorphWithNewScrubValue: function(newValue) {
-    throw new Error("Implement updateMorphWithNewScrubValue for your morph!");
+  onScrubbingStart: function(evt, scrubbingState) {},
+  onScrubbingEnd: function(evt, scrubbingState) {},
+
+  onScrubbingUpdate: function(evt, scrubbingState, newValue) {
+    throw new Error("Implement onScrubbingUpdate for your morph!");
   },
 
   getScrubbingStartValue: function(position) {
@@ -167,49 +183,106 @@ Trait("lively.morphic.Scrubbing",
   }
 });
 
+// -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+Trait("lively.morphic.ScrubbableText", Trait("lively.morphic.Scrubbing").def,
+"scrubbing", {
+
+  getScrubbingStartValue: function(pos, scrubbing) {
+    var c = this.getTextChunkAt(pos);
+    return c ? Number(c.textString) : null
+  },
+
+  onScrubbingEnd: function(evt, scrubbing) {
+      scrubbing.currentChunk = null;
+      this.setIsSelectable(scrubbing.wasSelectable);
+      this.setInputAllowed(scrubbing.inputAllowed)
+  },
+
+  onScrubbingStart: function(evt, scrubbing) {
+      var pos = evt.getPosition();
+      var c = this.getTextChunkAt(pos);
+      scrubbing.currentChunk = c;
+      scrubbing.wasSelectable = this.isSelectable();
+      scrubbing.inputAllowed = this.inputAllowed();
+      this.setIsSelectable(false);
+      this.setInputAllowed(false);
+      // this.setIsSelectable(true);
+      // this.setInputAllowed(true);
+
+  },
+
+  onScrubbingUpdate: function(evt, scrubbing, value) {
+      var c = scrubbing.currentChunk;
+      c && (c.textString = String(value));
+      this.cachedTextString = null;
+      this.fit();
+      // this.get("text").textString = String(value);
+  }
+
+});
+
+
+Object.extend(lively.morphic.Scrubbing, {
+
+  installScrubbingIn: function(morph, options) {
+    options = lively.lang.obj.merge({initialFactor: 1}, options);
+
+    var trait = morph instanceof lively.morphic.Text ?
+      Trait("lively.morphic.ScrubbableText") :
+      Trait("lively.morphic.Scrubbing");
+    trait.applyTo(morph, {override: ["onDrag", "onDragEnd", "onDragStart", "onMouseDown", "onMouseUp"]});
+
+    morph.initScrubbingState(options);
+  }
+
+});
+// -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
 function scrubbingExample() {
   // scrubbingExample();
-  var morph = lively.BuildSpec({
-      _Extent: lively.pt(50,50),
-      _Fill: Color.red,
-      className: "lively.morphic.Box",
-      grabbingEnabled: false,
-      layout: { adjustForNewBounds: true },
-      name: "ScrubbingExample",
-      submorphs: [{
-          className: "lively.morphic.Text",
-          _Extent: lively.pt(27.7,28.0),
-          _Position: lively.pt(20,10),
-          _TextColor: Color.white,
-          grabbingEnabled: false,
-          _IsSelectable: false,
-          layout: { centeredHorizontal: true, centeredVertical: true, resizeWidth: false },
-          name: "text",
-          textString: "0"
-      }],
-  
-      getScrubbingStartValue: function getScrubbingStartValue() {
-        return Number(this.get("text").textString);
-      },
-  
-      reset: function reset() {
-          // this.get("text").showHalos();
-          this.disableGrabbing();
-          this.get("text").ignoreEvents();
-          Global.Trait("lively.morphic.Scrubbing").applyTo(this, {
-            override: ["onDrag", "onDragEnd", "onDragStart"]
-          });
-          this.initScrubbingState();
-      },
-  
-      updateMorphWithNewScrubValue: function updateMorphWithNewScrubValue(value) {
-          this.get("text").textString = String(value);
-      }
-  }).createMorph();
-  
+  var morph = lively.morphic.Morph.makeRectangle(0,0,50,50);
+  morph.applyStyle({
+    fill: Color.red,
+    handStyle: "ew-resize",
+  })
+  morph.addMorph(lively.morphic.Text.makeLabel("0", {
+    name: "text",
+    handStyle: "ew-resize",
+    fixedWidth: false,
+    fontSize: 28, textColor: Color.white
+  }));
+
+  morph.addScript(function onLoad() { this.initScrubbingState(); });
+
+  morph.addScript(function getScrubbingStartValue() {
+    return Number(this.get("text").textString);
+  });
+
+  morph.addScript(function onScrubbingUpdate(evt, scrubbing, value) {
+      this.get("text").textString = String(value);
+      this.get("text").fit();
+  });
+
   morph.openInWorldCenter();
-  morph.reset();
-  morph.applyLayout();
+  morph.disableGrabbing();
+  lively.morphic.Scrubbing.installScrubbingIn(morph);
+}
+
+function scrubbingExampleWithMultipleNumbersInOneTexts() {
+  // scrubbingExampleWithMultipleNumbersInOneTexts();
+  var t = new lively.morphic.Text(rect(0,0,100,100), "foo 123 bar567");
+  t.openInWorldCenter();
+
+  t.addScript(function onLoad() {
+      this.initScrubbingState({initialFactor: 0.1});
+  });
+
+  lively.morphic.Scrubbing.installScrubbingIn(t, {initialFactor: 0.1});
+
+  t.setStyleSheet(".scrubbable { cursor: ew-resize; }")
+  t.emphasizeRegex(/[\+-]?[0-9\.]+/g, {color: Global.Color.red, cssClasses: ["scrubbable", "number"]});
+  t.applyStyle({whiteSpaceHandling: "pre", fixedWidth: false});
 }
 
 }) // end of module

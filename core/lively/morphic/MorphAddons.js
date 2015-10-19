@@ -23,8 +23,11 @@ Object.extend(lively.morphic, {
     show: function(obj) {
 
         function showText(text) {
-          $world.setStatusMessage(text, Color.gray);
-          return text;
+            if (typeof $world != 'undefined')
+                $world.setStatusMessage(text, Color.gray);
+            else
+                console.log('show: ' + text);
+            return text;
         }
 
         function newShowPt(/*pos or x,y, duration, extent*/) {
@@ -53,41 +56,8 @@ Object.extend(lively.morphic, {
         }
 
         function newShowRect(r, duration) {
-            // creates a marker that looks like:
-            //
-            // xxxx     xxxx
-            // x           x
-            // x           x
-
-            // x           x
-            // x           x
-            // xxxx     xxxx
-            function createMarkerMorph(bounds) {
-                var b = new lively.morphic.Morph();
-                b.isEpiMorph = true;
-                b.setBounds(bounds);
-                b.applyStyle({fill: null, borderWidth: 2, borderColor: Color.red})
-                b.ignoreEvents();
-                b.setZIndex(1);
-                return b;
-            }
-            function createMarkerForCorners() {
-                r = r.insetBy(-2);
-                var length = Math.min(r.width, r.height),
-                    markerLength = Math.max(4, Math.floor((length/10) < 10 ? (length / 2) - 5 : length / 10)),
-                    boundsForMarkers = [
-                        r.topLeft().     addXY(0,0).               extent(pt(markerLength, 0)),
-                        r.topLeft().     addXY(0,2).               extent(pt(0, markerLength)),
-                        r.topRight().    addXY(-markerLength, 0).  extent(pt(markerLength, 0)),
-                        r.topRight().    addXY(-4,2).              extent(pt(0, markerLength)),
-                        r.bottomRight(). addXY(-4, -markerLength). extent(pt(0, markerLength)),
-                        r.bottomRight(). addXY(-markerLength, -2). extent(pt(markerLength, 0)),
-                        r.bottomLeft().  addXY(0,-2).              extent(pt(markerLength, 0)),
-                        r.bottomLeft().  addXY(0, -markerLength).  extent(pt(0, markerLength))],
-                    markers = boundsForMarkers.map(createMarkerMorph);
-                return markers;
-            }
-            return newShowThenHide(createMarkerForCorners(), duration);
+          var marker = lively.morphic.BoundsMarker.highlightBounds(r);
+          return newShowThenHide(marker, duration);
         }
 
         function newShowMorph (morph) {
@@ -158,11 +128,29 @@ Object.extend(lively.morphic, {
       if (world) world.openObjectEditorFor.apply(world, arguments);
     },
 
-    showCallStack: function() {
+    printCallStack: function() {
         var stack = 'no stack';
         try { throw new Error() } catch(e) { if (e.stack) stack = e.stack }
-        lively.morphic.alert(stack);
+        return stack;
     },
+
+    showCallStack: function() {
+        lively.morphic.alert(lively.morphic.printCallStack());
+    },
+
+    printInspect: (function() {
+      function inspectPrinter(val, ignore) {
+        return val && val.isMorph ? String(val) : ignore;
+      }
+      
+      return function(obj, maxDepth) {
+        return Object.isObject(obj) ? lively.lang.obj.inspect(obj, {
+          customPrinter: inspectPrinter,
+          maxDepth: maxDepth,
+          printFunctionSource: true
+        }) : String(obj);
+      }
+    })(),
 
     newMorph: function(options) {
         // for interactive usage
@@ -186,7 +174,8 @@ Object.extend(lively, {
     showMarkerFor:     lively.morphic.showMarkerFor,
     show:     lively.morphic.show,
     log:      lively.morphic.log,
-    newMorph: lively.morphic.newMorph
+    newMorph: lively.morphic.newMorph,
+    printInspect: lively.morphic.printInspect
 });
 
 Object.extend(Global, {
@@ -202,6 +191,7 @@ Object.extend(Global, {
 
 lively.morphic.Morph.addMethods(
 'geometry', {
+
     moveBy: function(point) { this.setPosition(this.getPosition().addPt(point)); },
     translateBy: function(p) { this.setPosition(this.getPosition().addPt(p)); return this; },
     align: function (p1, p2) { return this.translateBy(p2.subPt(p1)); },
@@ -209,7 +199,12 @@ lively.morphic.Morph.addMethods(
     rotateBy: function(delta) { this.setRotation(this.getRotation() + delta); return this; },
     scaleBy: function(factor) { this.setScale(this.getScale()*factor); },
     centerAt: function(p) { return this.align(this.bounds().center(), p); },
-    resizeBy: function(point) { this.setExtent(this.getExtent().addPt(point)); }
+    resizeBy: function(point) { this.setExtent(this.getExtent().addPt(point)); },
+    width: function() { return this.getExtent().x; },
+    setWidth: function(w) { return this.setExtent(this.getExtent().withX(w)); },
+    height: function() { return this.getExtent().y; },
+    setHeight: function(h) { return this.setExtent(this.getExtent().withY(h)); }
+
 },
 'morphic relationship', {
     addMorphBack: function(other) {
@@ -243,6 +238,7 @@ lively.morphic.Morph.addMethods(
         items = items.concat(this.submorphs.invoke('indentedListItemsOfMorphNames', indent).flatten());
         return items;
     },
+
     treeItemsOfMorphNames: function (options) {
         var scripts = options["scripts"] || [],
             properties = options["properties"] || {},
@@ -455,6 +451,18 @@ lively.morphic.Morph.addMethods(
     }
 
 },
+"layouting helpers", {
+  
+  fitToSubmorphs: function() {
+    if (!this.submorphs.length) return;
+    var subBounds = this.submorphBounds(new lively.morphic.Similitude()),
+        l = this.getLayouter(),
+        offset = l ? l.getBorderSize() : 0;
+    this.setExtent(subBounds.bottomRight().addXY(offset, offset));
+  }
+
+},
+
 'update & change', {
     layoutChanged: function() {},
     changed: function() {}
@@ -1711,7 +1719,7 @@ lively.morphic.Text.subclass("lively.morphic.StatusMessage",
     this.fitThenDo(function() {
       this.setVisible(true);
       this.bringToFront();
-      this.setPosition(forMorph.worldPoint(forMorph.innerBounds().bottomLeft()));
+      this.setPosition(forMorph.owner.worldPoint(forMorph.bounds().bottomLeft()));
       var visibleBounds = world.visibleBounds(),
           bounds = this.bounds(),
           height = Math.min(bounds.height+3, maxY),
@@ -1800,6 +1808,97 @@ Trait('lively.morphic.SetStatusMessageTrait', {
   showError: function (e, offset) {
       this.setStatusMessage(String(e), Color.red);
       if (e.stack) this._statusMorph.insertion = e.stack;
+  }
+
+});
+
+lively.morphic.Box.subclass("lively.morphic.BoundsMarker",
+"initializing", {
+
+  isEpiMorph: true,
+  style: {zIndex: 1, borderWidth: 0, fill: null},
+
+  initialize: function($super, optStyle) {
+    // creates a marker that looks like:
+    //
+    // xxxx     xxxx
+    // x           x
+    // x           x
+    // 
+    // x           x
+    // x           x
+    // xxxx     xxxx
+    $super(rect(0,0,10,10));
+    this.ignoreEvents();
+    this.markerStyle = lively.lang.obj.merge(
+      {fill: null, borderWidth: 2, borderColor: Color.red},
+      optStyle);
+  },
+
+  markerLength: function(forBounds) {
+    forBounds = forBounds.insetBy(-2);
+    var length = Math.min(forBounds.width, forBounds.height);
+    return Math.max(4, Math.floor((length/10) < 10 ? (length / 2) - 5 : length / 10));
+  },
+
+  createMarkerEdge: function() {
+      var b = new lively.morphic.Morph();
+      b.isEpiMorph = true;
+      b.ignoreEvents();
+      b.applyStyle(this.markerStyle);
+      return b;
+  },
+
+  ensureMarkerCorners: function() {
+    var topLeftH     = this.topLeftH     || (this.topLeftH     = this.addMorph(this.createMarkerEdge())),
+        topLeftV     = this.topLeftV     || (this.topLeftV     = this.addMorph(this.createMarkerEdge())),
+        topRightH    = this.topRightH    || (this.topRightH    = this.addMorph(this.createMarkerEdge())),
+        topRightV    = this.topRightV    || (this.topRightV    = this.addMorph(this.createMarkerEdge())),
+        bottomRightH = this.bottomRightH || (this.bottomRightH = this.addMorph(this.createMarkerEdge())),
+        bottomRightV = this.bottomRightV || (this.bottomRightV = this.addMorph(this.createMarkerEdge())),
+        bottomLeftH  = this.bottomLeftH  || (this.bottomLeftH  = this.addMorph(this.createMarkerEdge())),
+        bottomLeftV  = this.bottomLeftV  || (this.bottomLeftV  = this.addMorph(this.createMarkerEdge()));
+    return [
+      topLeftH, topLeftV,
+      topRightH, topRightV,
+      bottomRightH, bottomRightV,
+      bottomLeftH, bottomLeftV];
+  },
+  
+  alignWithMorph: function(otherMorph) {
+    return this.alignWithRect(otherMorph.globalBounds());
+  },
+
+  alignWithRect: function(r) {
+    var corners = this.ensureMarkerCorners(),
+        markerLength = this.markerLength(r),
+        boundsForMarkers = [
+            r.topLeft().     addXY(0,0).               extent(pt(markerLength, 0)),
+            r.topLeft().     addXY(0,2).               extent(pt(0, markerLength)),
+            r.topRight().    addXY(-markerLength, 0).  extent(pt(markerLength, 0)),
+            r.topRight().    addXY(-4,2).              extent(pt(0, markerLength)),
+            r.bottomRight(). addXY(-4, -markerLength). extent(pt(0, markerLength)),
+            r.bottomRight(). addXY(-markerLength, -2). extent(pt(markerLength, 0)),
+            r.bottomLeft().  addXY(0,-2).              extent(pt(markerLength, 0)),
+            r.bottomLeft().  addXY(0, -markerLength).  extent(pt(0, markerLength))];
+    corners.forEach(function(corner, i) {
+      corner.setBounds(boundsForMarkers[i]);
+    });    
+    return this;
+  }
+
+});
+
+Object.extend(lively.morphic.BoundsMarker, {
+  
+  highlightMorph: function(morph) {
+    return new lively.morphic.BoundsMarker()
+      .openInWorld().alignWithMorph(morph);
+  },
+
+  highlightBounds: function(bounds) {
+    return new lively.morphic.BoundsMarker()
+      .openInWorld().alignWithRect(bounds);
   }
 
 });

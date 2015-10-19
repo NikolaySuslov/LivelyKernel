@@ -41,9 +41,9 @@ Object.subclass('lively.morphic.Morph',
         // FIXME implement
         return {}
     },
-    shapeContainsPoint: function(pt) {
+    shapeContainsPoint: function(localPt) {
         // Need to check for non-rectangular shapes
-        return this.shape.reallyContainsPoint(pt)
+        return this.shape.reallyContainsPoint(localPt);
     }
 
 },
@@ -115,6 +115,7 @@ Object.subclass('lively.morphic.Morph',
     adjustOrigin: function(newOrigin, moveSubmorphs) {
         // changes the origin / pivot of the morph by offsetting the shape
         // without changing the morph's or submorphs' position on the screen
+        if (this.getOrigin().eqPt(newOrigin)) return;
         var oldOrigin            = this.getOrigin(),
             delta                = newOrigin.subPt(oldOrigin),
             transform            = this.getTransform(),
@@ -128,7 +129,12 @@ Object.subclass('lively.morphic.Morph',
 
         this.shape.setPosition(newOrigin.negated());
         if (moveSubmorphs) return;
-        this.submorphs.forEach(function (ea) {ea.moveBy(transformedDelta.negated())});
+        this.submorphs.forEach(function (ea) {
+          var oldO = ea.getTransform().transformPoint(oldOrigin),
+              newO = ea.getTransform().transformPoint(newOrigin),
+              delta = newO.subPt(oldO);
+          ea.moveBy(delta.negated());
+        });
     },
     getOrigin: function() { return this.shape.getPosition().negated() },
     setPivotPoint: function(value) {
@@ -672,6 +678,10 @@ Object.subclass('lively.morphic.Morph',
             this.setAppearanceStylingMode(spec.cssStyling);
         }
 
+        if (spec.styleSheet !== undefined) { // enable disable styling through css
+            this.setStyleSheet(spec.styleSheet);
+        }
+
         if (spec.resizeWidth !== undefined || spec.resizeHeight !== undefined || spec.moveVertical !== undefined || spec.moveHorizontal !== undefined || spec.adjustForNewBounds !== undefined || spec.scaleHorizontal !== undefined || spec.scaleVertical !== undefined || spec.centeredVertical !== undefined || spec.centeredHorizontal !== undefined || spec.scaleProportional !== undefined) {
             this.layout = this.layout || {};
             if (spec.resizeWidth !== undefined) this.layout.resizeWidth = spec.resizeWidth;
@@ -1108,7 +1118,7 @@ Object.subclass('lively.morphic.ControlPoint',
     isLast: function() { return this.morph.controlPoints.length === this.index+1 },
     isCurve: function() {
         var e = this.getElement();
-        return e.charCode == 'Q' || e.charCode == 'C' || e.charCode == 'S';
+        return e ? e.charCode == 'Q' || e.charCode == 'C' || e.charCode == 'S' : false;
     }
 },
 'accessing', {

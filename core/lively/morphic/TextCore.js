@@ -51,6 +51,12 @@ Trait('TextChunkOwner',
                     return [rangeAndStyle[0][0],
                             rangeAndStyle[0][1],
                             rangeAndStyle[1]]})
+    },
+
+    getTextChunkAt: function(globalPos) {
+        return this.getTextChunks().detect(function(c) {
+          return c.bounds().containsPoint(globalPos);
+        });
     }
 
 },
@@ -462,6 +468,15 @@ lively.morphic.Morph.subclass('lively.morphic.Text', Trait('TextChunkOwner'),
 },
 'rendering', {
 
+    fitToSubmorphs: function() {
+      if (!this.submorphs.length) return;
+      var subBounds = this.submorphBounds(new lively.morphic.Similitude()),
+          l = this.getLayouter(),
+          offset = l ? l.getBorderSize() : 0,
+          padding = this.getPadding();
+      this.setExtent(subBounds.bottomRight().addXY(offset, offset).addXY(padding.bottom(), padding.right()));
+    },
+  
     growOrShrinkToFit: function() {
         if (!this.getExtent().eqPt(this.getTextExtent())) {
             this.setExtent(this.getTextExtent());
@@ -607,7 +622,7 @@ lively.morphic.Morph.subclass('lively.morphic.Text', Trait('TextChunkOwner'),
             fill: null,
             borderWidth: 0,
             fixedWidth: false, fixedHeight: false,
-            allowInput: false,
+            allowInput: false, selectable: false,
             clipMode: 'hidden',
             whiteSpaceHandling: "pre"
         };

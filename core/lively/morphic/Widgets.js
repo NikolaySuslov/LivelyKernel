@@ -462,6 +462,15 @@ lively.morphic.Morph.subclass('lively.morphic.Image',
         return $super(evt)
     }
 },
+'hit testing', {
+    alphaHitTest: false, // if true do pixel-based hit testing
+
+    shapeContainsPoint: function(localPt){
+        if (this.alphaHitTest)
+            return this.shape.reallyContainsPoint(localPt);
+        return true;
+    },
+},
 'type conversion', {
 
     convertTo: function(type, quality) {
@@ -4168,6 +4177,7 @@ lively.morphic.Box.subclass('lively.morphic.Slider',
     initialize: function($super, initialBounds, scaleIfAny) {
         $super(initialBounds);
         lively.bindings.connect(this, 'value', this, 'adjustSliderParts');
+        lively.bindings.connect(this, 'value', this, 'onValueChange');
         this.setValue(0);
         this.setSliderExtent(0.1);
         this.valueScale = (scaleIfAny === undefined) ? 1.0 : scaleIfAny;
@@ -4181,9 +4191,13 @@ lively.morphic.Box.subclass('lively.morphic.Slider',
     }
 },
 'accessing', {
-    getValue: function() { return this.value },
+    getValue: function() { return this.value; },
 
-    setValue: function(value) { return this.value = value },
+    setValue: function(value) { return this.value = value; },
+
+    getValueScale: function() { return this.valueScale; },
+
+    setValueScale: function(valueScale) { this.valueScale = valueScale; this.adjustSliderParts(); return valueScale; },
 
     getScaledValue: function() {
         var v = (this.getValue() || 0); // FIXME remove 0
@@ -4209,12 +4223,14 @@ lively.morphic.Box.subclass('lively.morphic.Slider',
         this.adjustSliderParts();
         return value;
     },
+
     setExtent: function($super, value) {
         $super(value);
         this.adjustSliderParts();
         return value;
     },
 
+    onValueChange: function(newValue, oldValue) {},
 },
 'mouse events', {
     onMouseDown: function(evt) {

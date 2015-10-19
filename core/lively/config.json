@@ -10,6 +10,7 @@
       "node_modules/lively.lang/lib/events.js",
       "node_modules/lively.lang/lib/object.js",
       "node_modules/lively.lang/lib/collection.js",
+      "node_modules/lively.lang/lib/sequence.js",
       "node_modules/lively.lang/lib/tree.js",
       "node_modules/lively.lang/lib/graph.js",
       "node_modules/lively.lang/lib/function.js",
@@ -352,6 +353,8 @@
     ["aceDefaultUseIyGotoChar", true, "Quickly jump to next / prev characters using Cmd/Ctrl-, and Cmd/Ctrl-. "],
     ["evalMarkersEnabled", true, "Eval markers are code selections that can be rerun by pressing a code. Useful for live development and quick testing."],
     ["codeEditorMenuShowsSettings", true, "Include the settings menu item in the codeeditor context menu"],
+    ["draggableCodeInCodeEditor", false, "Based on AST, make code draggable"],
+    ["aceDefaultScrubbingEnabled", false, "Make number sin code editors scrubbable or not"],
     {
       "name": "useEmacsyKeys",
       "type": "Boolean",

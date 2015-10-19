@@ -1062,8 +1062,23 @@ lively.morphic.Shapes.Image.addMethods(
         } else {
              ctx.domInterface.setHTMLBorderRadius(ctx.getShapeNode(), value , value);
         }
-    }
-
+    },
+    reallyContainsPoint: function(p) {
+        // Check that p is a non-transparent pixel
+        var imgNode = this.renderContext().imgNode,
+            imgExt = pt(imgNode.naturalWidth, imgNode.naturalHeight),
+            scale = this.getExtent().invertedSafely(),
+            offset = this.getPosition(),
+            samplePos = p.subPt(offset).scaleByPt(scale).scaleByPt(imgExt);
+        var canvas = XHTMLNS.create('canvas');
+        canvas.width = 1;
+        canvas.height = 1;
+        var ctx = canvas.getContext("2d");
+        ctx.drawImage(imgNode, -samplePos.x, -samplePos.y);
+        var imgData = ctx.getImageData(0, 0, 1, 1),
+            alpha = imgData.data[3];
+        return alpha > 0;
+    },
 });
 
 lively.morphic.Shapes.External.addMethods(

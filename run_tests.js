@@ -96,6 +96,8 @@ var browserTests = [
 
     // persistence
     "lively.persistence.tests.MassMorphCreation",
+    'lively.persistence.tests.MorphicState',
+    'lively.persistence.tests.MorphicProperties',
 
     // presentation
     "lively.presentation.tests.Builds",
@@ -121,6 +123,8 @@ var browserTests = [
     // connection needed for the shell tests and the shell environment itself
     // 'lively.ide.tests.CommandLineInterface',
     "lively.ide.codeeditor.tests.JumpChar",
+    "lively.ide.codeeditor.tests.DraggableCode",
+    "lively.ide.codeeditor.tests.MorphicOverlays",
     "lively.ide.codeeditor.tests.TextOverlays",
     'lively.ide.codeeditor.tests.DiffMode',
     'lively.ide.codeeditor.tests.TreeMode',
@@ -141,6 +145,7 @@ var browserTests = [
     "lively.morphic.tests.Connectors",
     "lively.morphic.tests.CoreToolsTests",
     "lively.morphic.tests.DataGridTests",
+    "lively.morphic.tests.DraggableJavaScript",
     "lively.morphic.tests.DiffMerge",
     "lively.morphic.tests.EventTests",
     "lively.morphic.tests.Graphics",

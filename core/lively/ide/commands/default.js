@@ -676,7 +676,7 @@ Object.extend(lively.ide.commands.byName, {
                 searchForMatchingDebounced = lively.lang.fun.debounce(1000, searchForMatching),
                 lastSearchInput = null, lastMatchParts = [],
                 ignoreResult = {}, // flag
-                lastFiles, lastFindCmd;
+                lastFiles;
 
             lively.ide.tools.SelectionNarrowing.getNarrower({
                   name: 'lively.ide.browseFiles.NarrowingList',
@@ -730,20 +730,21 @@ Object.extend(lively.ide.commands.byName, {
 
             function doSearch(searchAgain, input, matchParts, thenDo) {
                 lively.lang.fun.composeAsync(
+
                     function withDirDo(func) { func(null, lively.shell.cwd()); },
+
                     function fetchFiles(dir, next) {
                       if (!searchAgain && lastFiles) return next(null, lastFiles, dir);
                       var opts = {sync: false, matchPath: true}
                       if (input.length < 3) opts.depth = 2;
                       input = "*" + input.replace(/^\*?|\*?$/g, "") + "*";
-                      lastFindCmd = lively.ide.CommandLineSearch.findFiles(
-                        input, opts, function(err, files, cmd) {
-                          if (lastFindCmd && lastFindCmd.getStartTime() > cmd.getStartTime()) return next(ignoreResult);
-                          lastFindCmd = null;
-                          if (err) next(new Error('Cannot fetch files for ' + dir + ":\n" + err));
-                          else { lastFiles = files; next(null, files, dir); }
+                      lively.ide.CommandLineSearch.findFiles(input, opts, function(err, files, cmd) {
+                        if (cmd.isOutdated) return next(ignoreResult);
+                        else if (err) next(new Error('Cannot fetch files for ' + dir + ":\n" + err));
+                        else { lastFiles = files; next(null, files, dir); }
                       });
                     },
+
                     function(files, dir, next) {
                       var paths = files
                         .filter(function(ea) { return !ea.isDirectory; })
@@ -752,6 +753,7 @@ Object.extend(lively.ide.commands.byName, {
                         .filter(function(ea) { return lastMatchParts.every(function(match) { return match.test(ea); })});
                       next(null, paths, dir);
                     },
+
                     function(files, dir, next) { next(null, makeCandidates(dir, files)); }
                 )(function(err, candidates) {
                     if (err === ignoreResult) {/*...*/}
@@ -846,9 +848,9 @@ Object.extend(lively.ide.commands.byName, {
                     else lively.shell.exec('pwd', {}, function(cmd) { func(null, cmd.resultString()); });
                 }
                 function showLoadingIndicatorThenDo(thenDo) {
-                    require('lively.morphic.tools.LoadingIndicator').toRun(function() {
-                        lively.morphic.tools.LoadingIndicator.open(thenDo);
-                    });
+                  var m = module('lively.morphic.tools.LoadingIndicator');
+                  if (m.isLoaded()) m.open(thenDo);
+                  else { m.runWhenLoaded(function() { m.open(thenDo); m.load(); }); }
                 }
             }
 
@@ -1353,9 +1355,26 @@ Object.extend(lively.ide.commands.byName, {
     // tools
     'lively.ide.openWorkspace': {
         description: 'open Workspace',
-        exec: function() {
-            lively.require("lively.ide.tools.JavaScriptWorkspace").toRun(function() {
-                lively.ide.tools.JavaScriptWorkspace.open(); });
+        exec: function(options) {
+            options = options || {};
+            lively.lang.fun.composeAsync(
+              function(n) {
+                if (!module("lively.ide.tools.JavaScriptWorkspace").isLoaded())
+                  lively.require("lively.ide.tools.JavaScriptWorkspace").toRun(function() { n(); });
+                else n();
+              },
+              function(n) {
+                var workspace = lively.ide.tools.JavaScriptWorkspace.open();
+                var ed = workspace.targetMorph;
+                if (options.title) workspace.setTitle(options.title);
+                if (options.extent) workspace.setExtent(options.extent);
+                if (options.position) workspace.setPosition(options.position);
+                if (options.content) ed.textString = options.content;
+                if (options.textMode) ed.setTextMode(options.textMode);
+                if (options.fontSize) ed.setFontSize(options.fontSize);
+                n(null, workspace);
+              }
+            )(options.thenDo || function() {});
             return true;
         }
     },
