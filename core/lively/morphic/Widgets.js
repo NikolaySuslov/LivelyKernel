@@ -11,12 +11,11 @@ lively.morphic.Morph.subclass('lively.morphic.Button',
         borderColor: Color.neutral.lightGray,
         borderWidth: 1,
         borderRadius: 5,
-        padding: Rectangle.inset(0,3),
 
         label: {
             borderWidth: 0,
             fill: null,
-            padding: Rectangle.inset(0,3),
+            padding: Rectangle.inset(3,3),
             fontSize: 10,
             align: 'center',
             fixedWidth: true,
@@ -62,8 +61,17 @@ lively.morphic.Morph.subclass('lively.morphic.Button',
         this.label.setTextStylingMode(true);
         this.label.disableEvents();
         return this.label;
-    }
+    },
 
+    fitToLabel: function(thenDo) {
+      var self = this, l = this.label
+      l.applyStyle({fixedWidth: false, fixedHeight: false});
+      l.fitThenDo(function() {
+        self.fitToSubmorphs();
+        l.applyStyle({fixedWidth: true, fixedHeight: true});
+        thenDo && thenDo();
+      });
+    },
 },
 'accessing', {
 
@@ -440,6 +448,8 @@ lively.morphic.Morph.subclass('lively.morphic.Image',
         items.push(['Set to original extent', this.setNativeExtent.bind(this)]);
         items.push(['Resample image to fit bounds', this.resampleImageToFitBounds.bind(this)]);
         items.push(['Inline image data', this.convertToBase64.bind(this)]);
+        items.push([this.alphaHitTest ? 'Make transparent regions clickable' : 'Ignore clicks in transparent regions', 
+            function() { this.alphaHitTest = !this.alphaHitTest; }.bind(this)]);
         items.push(['Download', function() { this.downloadImage(); }.bind(this)]);
         return items;
     },
@@ -2272,6 +2282,10 @@ lively.morphic.World.addMethods(
         return this.openDialog(new lively.morphic.PromptDialog(message, callback, defaultInputOrOptions))
     },
 
+    multipleChoicePrompt: function(message, choices, callback) {
+        return this.openDialog(new lively.morphic.MultipleChoiceDialog(message, choices, callback));
+    },
+
     passwordPrompt: function(message, callback, options) {
         return this.openDialog(new lively.morphic.PasswordPromptDialog(message, callback, options));
     },
@@ -2676,18 +2690,19 @@ lively.morphic.Morph.subclass('lively.morphic.Window', Trait('lively.morphic.Dra
 'window behavior', {
 
     initiateShutdown: function() {
-        var shutdownCallback = function() {
-            this.signalShutdown;
-            var owner = this.owner;
-            this.remove(); // this will be removed from the owner and it will loose its owner
+        var win = this;
+        function shutdownCallback() {
+            win.signalShutdown();
+            var owner = win.owner;
+            win.logTransformationForUndo('close', 'start');
+            win.remove(); // win will be removed from the owner and it will loose its owner
+            win.logTransformationForUndo('close', 'end');
             if (owner.activateTopMostWindow) owner.activateTopMostWindow();
-        }.bind(this);
-
-        if (this.targetMorph && this.targetMorph.ifOkToShutdownDo) {
-            this.targetMorph.ifOkToShutdownDo(shutdownCallback);
-        } else {
-            shutdownCallback();
         }
+
+        if (this.targetMorph && this.targetMorph.ifOkToShutdownDo)
+          this.targetMorph.ifOkToShutdownDo(shutdownCallback);
+        else shutdownCallback();
     },
     signalShutdown: function() {
         if (this.onShutdown) this.onShutdown();
@@ -2979,6 +2994,7 @@ lively.morphic.Box.subclass('lively.morphic.ReframeHandle',
 
     onDragStart: function($super, evt) {
         this.startDragPos = evt.getPosition();
+        this.owner.logTransformationForUndo('reframe', 'start');
         this.originalTargetExtent = this.owner.getExtent();
         evt.stop(); return true;
     },
@@ -2998,6 +3014,7 @@ lively.morphic.Box.subclass('lively.morphic.ReframeHandle',
         delete this.originalTargetExtent;
         delete this.startDragPos;
         this.owner.alignAllHandles();
+        this.owner.logTransformationForUndo('reframe', 'end');
         evt.stop(); return true;
     }
 },
@@ -3161,7 +3178,8 @@ lively.morphic.App.subclass('lively.morphic.AbstractDialog',
                 this.cancelButton = btn;
             else
                 lively.bindings.connect(btn, 'fire', this, 'result', {
-                    converter: function() { return source.idx; }});
+                    converter: function() {
+                      return this.sourceObj.dialogValue || this.sourceObj.idx; }});
         }, this);
         return this.panel;
     }
@@ -3463,6 +3481,85 @@ lively.morphic.AbstractDialog.subclass('lively.morphic.EditDialog',
         this.inputText.selectAll.bind(this.inputText).delay(0);
         return view;
     }
+});
+
+lively.morphic.AbstractDialog.subclass('lively.morphic.MultipleChoiceDialog',
+'initializing', {
+
+    initialize: function($super, label, choices,  callback) {
+        $super(label, callback);
+        this.buttons = choices;
+        this.buttonMorphs = [];
+    },
+
+    buildView: function($super, extent) {
+      extent = extent.maxPt(pt(300, 32 + this.buttons.length * (30 + this.inset)));
+      var panel = $super(extent);
+      panel.addScript(function onKeyDown(evt) {
+        var app = this.ownerApp,
+            keys = evt.getKeyString(),
+            handled = false;
+        
+        if (keys === "Esc" && app.cancelButton) {
+          app.cancelButton.simulateButtonClick();
+          handled = true;
+        } else if (keys === "Enter" && app.okButton) {
+          app.okButton.simulateButtonClick();
+          handled = true;
+        } else {
+          var num = Number(keys),
+              button = !isNaN(num) && app.buttonMorphs[num-1];
+          if (button) {
+            button.simulateButtonClick();
+            handled = true;
+          }
+        }
+        if (handled) {
+          evt.stop(); return true;
+        } else return $super(evt);
+      });
+      this.fitAndAlignButtons();
+      return panel;
+    },
+
+    buildButton: function (title, place) {
+      place = Object.isNumber(place) ? place : 0;
+      var mult = (this.buttons.length) - place - 1,
+          bounds = new Rectangle(0,0, 75, 30),
+          btn = new lively.morphic.Button(bounds, title),
+          btnWidth = btn.bounds().width + this.inset;
+  
+      btn.dialogValue = title;
+      btn.align(
+        btn.bounds().topCenter(),
+        this.label.bounds().bottomCenter().addXY(0, this.inset).addXY(0, (30 + this.inset) * place));
+      btn.applyStyle({moveHorizontal: true, moveVertical: true});
+      lively.bindings.connect(btn, 'fire', this, 'removeTopLevel');
+      lively.bindings.connect(btn, 'fire', this, 'result', {
+        converter: function() { return this.sourceObj.dialogValue || this.sourceObj.idx; }
+      });
+      this.buttonMorphs.push(btn);
+      return this.panel.addMorph(btn);
+  },
+
+  fitAndAlignButtons: function(thenDo) {
+    var panel = this.panel;
+    lively.lang.arr.mapAsyncSeries(this.buttonMorphs,
+      function(btn, _, n) {
+        btn.fitToLabel(function() { n(null, btn); });
+      },
+      function(err, btns) {
+        var centerX = panel.innerBounds().center().x;
+        btns = btns.flatten();
+        var maxWidth = btns.invoke("getExtent").pluck("x").max();
+        btns.forEach(function(btn) {
+          btn.setWidth(maxWidth);
+          btn.setPositionCentered(pt(
+            centerX, btn.bounds().center().y));
+        });
+        thenDo && thenDo();
+      });
+  },
 });
 
 lively.morphic.App.subclass('lively.morphic.WindowedApp',

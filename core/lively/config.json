@@ -316,7 +316,7 @@
       "doc": "Tab width",
       "get": {
           "type": "function",
-          "code": "function() { return lively.Config.hasOwnProperty('_defaultTabSize') ? lively.Config._defaultTabSize : 4; }"
+          "code": "function() { return lively.Config.hasOwnProperty('_defaultTabSize') ? lively.Config._defaultTabSize : 2; }"
       },
       "set": {"type": "function", "code": "function(v) { lively.Config._defaultTabSize = v; module('lively.ide.CodeEditor').runWhenLoaded(function() { lively.morphic.CodeEditor.prototype.style.tabSize = v; lively.whenLoaded(function() { lively.ide.allCodeEditors().invoke('setTabSize', v); }); }); return v; }"}
     },
@@ -336,6 +336,32 @@
     ["aceDefaultTextMode", "javascript", "Ace text mode to use"],
     ["aceDefaultLineWrapping", true, "Wrap lines in ace?"],
     ["aceDefaultShowGutter", true, "Enables the line number gutter"],
+    {
+      "name": "aceShowGutterInObjectEditor",
+      "type": "Boolean",
+      "doc": "Enables the line number gutter in Object Editor",
+      "get": {
+        "type": "function",
+        "code": "function() { return Config._aceShowGutterInObjectEditor || false; }"
+      },
+      "set": {
+        "type": "function",
+        "code": "function(val) { var spec, path = lively.PropertyPath('attributeStore.submorphs.0.attributeStore.submorphs.0.attributeStore._ShowGutter');\n Config._aceShowGutterInObjectEditor = val;\n if (lively && lively.BuildSpec && (spec = lively.BuildSpec('lively.ide.tools.ObjectEditor'))) {\n path.set(spec, val); } }"
+      }
+    },
+    {
+      "name": "aceShowGutterInWorkspace",
+      "type": "Boolean",
+      "doc": "Enables the line number gutter in Workspace",
+      "get": {
+        "type": "function",
+        "code": "function() { return Config._aceShowGutterInWorkspace || false; }"
+      },
+      "set": {
+        "type": "function",
+        "code": "function(val) { var spec, path = lively.PropertyPath('attributeStore.submorphs.1.attributeStore._ShowGutter');\n Config._aceShowGutterInWorkspace = val;\n if (lively && lively.BuildSpec && (spec = lively.BuildSpec('lively.ide.tools.JavaScriptWorkspace'))) {\n path.set(spec, val); } }"
+      }
+    },
     ["aceDefaultShowInvisibles", false, "Indicators for whitespace / non-print chars."],
     ["aceDefaultShowPrintMargin", false, "Show a vertical line at the print margin column."],
     ["aceDefaultShowIndents", true, "Indicators for indents in the beginning of lines."],
@@ -445,7 +471,7 @@
           "type": "function",
           "code": "function() { return lively.Config._menuBarEntries || (lively.Config._menuBarEntries = lively.Config.get('menuBarDefaultEntries')); }"
       },
-      "set": {"type": "function", "code": "function(v) { lively.Config.menuBarEntries.pushIfNotIncluded(v); lively.morphic.tools.MenuBar.addEntries(v); }"}
+      "set": {"type": "function", "code": "function(v) { lively.Config._menuBarEntries = v; module('lively.morphic.tools.MenuBar').runWhenLoaded(function() { lively.morphic.tools.MenuBar.openOnWorldLoad(); }); return v; }"}
     },
 
     ["menuBarDefaultEntries", [

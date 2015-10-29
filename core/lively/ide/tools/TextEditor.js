@@ -152,7 +152,7 @@ lively.BuildSpec('lively.ide.tools.TextEditor', {
             switch(ext) {
                 case "r": $upd("r"); return;
                 case "css": $upd("css"); return;
-                case "h": case "c": case "cpp": case "hpp": $upd("c_cpp"); return;
+                case "h": case "c": case "cc": case "cpp": case "hpp": $upd("c_cpp"); return;
                 case "diff": $upd("diff"); return;
                 case "xhtml": case "html": $upd("html"); return;
                 case "js": $upd("javascript"); return;
@@ -331,7 +331,7 @@ lively.BuildSpec('lively.ide.tools.TextEditor', {
 
     livelyRuntimeUpdateDoitContext: function livelyRuntimeUpdateDoitContext(thenDo) {
       var rt = lively.lang.Path("lively.lang.Runtime").get(Global);
-      if (!rt) return thenDo(null,null);
+      if (!rt) return typeof thenDo === "function" && thenDo(null, null);
       var editor = this.get("editor");
       lively.lang.Runtime.findProjectForResource(String(this.getLocation()), function(err, proj) {
         editor.doitContext = proj ?

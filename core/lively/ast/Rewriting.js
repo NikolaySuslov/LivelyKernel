@@ -937,7 +937,7 @@ Object.subclass("lively.ast.Rewriting.BaseVisitor",
             node.handler = this.accept(node.handler, state);
         }
 
-        node.guardedHandlers = node.guardedHandlers.map(function(ea) {
+        node.guardedHandlers = node.guardedHandlers && node.guardedHandlers.map(function(ea) {
             // ea is of type CatchClause
             return this.accept(ea, state);
         }, this);
@@ -1108,7 +1108,11 @@ Object.subclass("lively.ast.Rewriting.BaseVisitor",
     },
 
     visitArrowExpression: function(node, state) {
-        node.params = node.params.map(function(ea) {
+        this.visitArrowFunctionExpression(node, state);
+    },
+
+    visitArrowFunctionExpression: function(node, state) {
+       node.params = node.params.map(function(ea) {
             // ea is of type Pattern
             return this.accept(ea, state);
         }, this);
@@ -1850,9 +1854,12 @@ lively.ast.Rewriting.BaseVisitor.subclass("lively.ast.Rewriting.RewriteVisitor",
         }
 
         rewriter.enterScope();
-        var args = rewriter.registerVars(n.params), // arguments
-            decls = rewriter.registerDeclarations(n.body, this), // locals
-            rewritten = this.accept(n.body, rewriter);
+        // Arrow functions can have a single node as body:
+        var body = n.body.type === "BlockStatement" ? n.body :
+              {type: "BlockStatement", body: [{type: "ReturnStatement", argument: n.body}]},
+            args = rewriter.registerVars(n.params), // arguments
+            decls = rewriter.registerDeclarations(body, this), // locals
+            rewritten = this.accept(body, rewriter);
         rewriter.exitScope();
         var wrapped = rewriter.wrapClosure({
             start: n.start, end: n.end, type: 'FunctionExpression',
@@ -1866,6 +1873,10 @@ lively.ast.Rewriting.BaseVisitor.subclass("lively.ast.Rewriting.RewriteVisitor",
             id: n.id
         });
         return wrapped;
+    },
+
+    visitArrowFunctionExpression: function(n, rewriter) {
+        return this.visitFunctionExpression(n, rewriter);
     },
 
     visitVariableDeclaration: function(n, rewriter) {
@@ -2122,10 +2133,13 @@ lively.ast.Rewriting.BaseVisitor.subclass("lively.ast.Rewriting.RewriteVisitor",
         var block = this.accept(n.block, rewriter),
             handler = n.handler,
             finalizer = n.finalizer,
-            guardedHandlers = n.guardedHandlers.map(function(node) {
-                // node is of type CatchClause
-                return this.accept(node, rewriter);
-            }, this);
+            guardedHandlers;
+        if (n.guardedHandlers) {
+          guardedHandlers = n.guardedHandlers.map(function(node) {
+              // node is of type CatchClause
+              return this.accept(node, rewriter);
+          }, this);
+        }
         if (!handler)
             handler = rewriter.newNode('CatchClause', {
                 param: rewriter.newNode('Identifier', { name: 'e' }),
