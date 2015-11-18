@@ -75,8 +75,10 @@ lively.morphic.Morph.subclass('lively.morphic.CanvasMorph',
         // canvas is about to lose its contents (size changed)
         // the value returned from here will be passed into onCanvasChanged() 
         // the default is to save pixels and restore them in onCanvasChanged()
+      try {
         if (this.preserveContents)
             return this.getImageData();
+      } catch (e) { return null; }
     },
 
     onCanvasChanged: function(newExtent, oldExtent, savedData) {
@@ -117,12 +119,23 @@ lively.morphic.Morph.subclass('lively.morphic.CanvasMorph',
         img.src = uri;
     },
 
-    fromImageMorph: function(imgMorph) {
-        var imgNode = imgMorph.renderContext().imgNode;
-        var ext = pt(imgNode.naturalWidth, imgNode.naturalHeight);
-        this.setExtent(ext);
-        this.getContext().drawImage(imgNode, 0,0);
-        return this;
+    fromImageMorph: function(imgMorph, opts) {
+      return this.fromImageElement(imgMorph.renderContext().imgNode, opts);
+    },
+
+    fromImageElement: function(el, opts) {
+      opts = opts || {};
+      var imgExt = pt(el.naturalWidth, el.naturalHeight);
+      var ext = opts.extent || imgExt;
+      if (opts.keepAspectRatio && (imgExt.x > ext.x || imgExt.y > ext.y)) {
+        var ratioX = ext.x / imgExt.x,
+            ratioY = ext.y / imgExt.y,
+            ratio = Math.min(ratioX, ratioY);
+        ext = imgExt.scaleBy(ratio);
+      }
+      if (opts.resize) this.setExtent(ext);
+      this.getContext().drawImage(el, 0,0, ext.x, ext.y);
+      return this;
     },
 
     toImage: function() {
@@ -363,7 +376,7 @@ lively.morphic.Morph.subclass('lively.morphic.CanvasMorph',
                 var data = this.onCanvasWillChange(newExt, oldExt);
                 canvas.width = newWidth;
                 canvas.height = newHeight;
-                this.onCanvasChanged(newExt, oldExt, data);
+                if (data) this.onCanvasChanged(newExt, oldExt, data);
             }
         } finally {
             this._adaptCanvasSizeHTMLInProgress = false;
@@ -412,6 +425,54 @@ lively.morphic.Morph.subclass('lively.morphic.CanvasMorph',
         }
         return $super(evt);
     }
+},
+"drawing", {
+
+  drawWithOptions: function(options, drawFunc) {
+    var ctx = (options && options.ctx) || this.getContext();
+    if (options) {
+      ctx.save();
+      if (options.transform) ctx.setTransform(options.transform);
+      if (options.strokeStyle)              ctx.strokeStyle              = options.strokeStyle
+      if (options.fillStyle)                ctx.fillStyle                = options.fillStyle
+      if (options.globalAlpha)              ctx.globalAlpha              = options.globalAlpha
+      if (options.lineWidth)                ctx.lineWidth                = options.lineWidth
+      if (options.lineCap)                  ctx.lineCap                  = options.lineCap
+      if (options.lineJoin)                 ctx.lineJoin                 = options.lineJoin
+      if (options.miterLimit)               ctx.miterLimit               = options.miterLimit
+      if (options.lineDashOffset)           ctx.lineDashOffset           = options.lineDashOffset
+      if (options.shadowOffsetX)            ctx.shadowOffsetX            = options.shadowOffsetX
+      if (options.shadowOffsetY)            ctx.shadowOffsetY            = options.shadowOffsetY
+      if (options.shadowBlur)               ctx.shadowBlur               = options.shadowBlur
+      if (options.shadowColor)              ctx.shadowColor              = options.shadowColor
+      if (options.globalCompositeOperation) ctx.globalCompositeOperation = options.globalCompositeOperation
+      if (options.font)                     ctx.font                     = options.font
+      if (options.textAlign)                ctx.textAlign                = options.textAlign
+      if (options.textBaseline)             ctx.textBaseline             = options.textBaseline
+      if (options.direction)                ctx.direction                = options.direction
+      if (options.imageSmoothingEnabled)    ctx.imageSmoothingEnabled    = options.imageSmoothingEnabled
+    }
+    try {
+      return drawFunc.call(this, ctx);
+    } finally {
+      if (options) ctx.restore();
+    }
+  },
+
+  drawLine: function(line, options) {
+    return this.drawWithOptions(options, ctx => {
+      ctx.beginPath()
+      ctx.moveTo(line.start.x, line.start.y)
+      ctx.lineTo(line.end.x, line.end.y)
+      ctx.closePath()
+      ctx.stroke();
+    });
+  },
+
+  drawVec: function(pointVec, options) {
+    return this.drawLine(pt(0,0).lineTo(pointVec), options);
+  },
+
 });
 
 Object.extend(lively.morphic.CanvasMorph, {
@@ -816,6 +877,71 @@ lively.morphic.HtmlWrapperMorph.subclass('lively.morphic.ReactMorph',
         // hierarchical morph rendering is handled through React
         //React.renderComponent(this.reactComponent, this.renderContext().morphNode);
     }
+});
+
+lively.morphic.HtmlWrapperMorph.subclass("lively.morphic.HTML5Video",
+"initialization", {
+  initialize: function($super, extent, videoURL) {
+    $super(extent);
+    this.videoURL = videoURL || null;
+    if (videoURL) this.loadVideoThenDo(videoURL, true, function() {});
+  },
+
+  setVideoMarkup: function(videoURL) {
+    var videoName = videoURL.replace(/(\.mp4|\.webm|\.oggtheora.ogv)$/, ""),
+        extent = this.getExtent(),
+        html = lively.lang.string.format(
+         "<video style=\"display: inline-block;\" width=\"%spx\" height=\"%spx\" autobuffer=\"autobuffer\">"
+      +   "<source src=\"%s.mp4\" type=\"video/mp4; codecs=&quot;avc1.42E01E, mp4a.40.2&quot;\"/>"
+      +   "<source src=\"%s.webm\" type=\"video/webm; codecs=&quot;webm, vp8&quot;\"/>"
+      +   "<source src=\"%s.oggtheora.ogv\" type=\"video/ogg; codecs=&quot;theora, vorbis&quot;\"/>"
+      + "</video>", extent.x, extent.y, videoName, videoName, videoName);
+    this.setHTML(html);
+  },
+
+  loadVideoThenDo: function(videoURL, useNativeExtent, thenDo) {
+    this.videoURL = videoURL;
+    this.setVideoMarkup(videoURL);
+    var m = this;
+
+    lively.lang.fun.waitFor(1000,
+      function() { return m.videoElement() && m.videoElement().videoWidth != 0; },
+      onload)
+  
+    function onload(err) {
+      var n = m.videoElement();
+      if (!err && useNativeExtent && n.videoWidth > 0) {
+        m.setExtent(pt(n.videoWidth, n.videoHeight));
+        n.width = n.videoWidth; n.height = n.videoHeight;
+      }
+      thenDo && thenDo(err, m);
+    }
+  }
+
+},
+"video related", {
+
+  videoElement: function() { return this.renderContext().shapeNode.childNodes[0]; },
+
+  setControlsVisible: function(bool) { return this.videoElement().controls = bool; },
+
+  play: function() { return this.videoElement().play(); },
+
+  pause: function() { return this.videoElement().pause(); }
+
+});
+
+Object.extend(lively.morphic.HTML5Video, {
+  withVideoMorph: function(videoURL, extent, thenDo) {
+    var useNativeExtent = false;
+    if (typeof extent === "function") {
+      thenDo = extent; extent = null;
+      useNativeExtent = true;
+    }
+    var m = new lively.morphic.HTML5Video(extent || pt(300,200));
+    m.loadVideoThenDo(videoURL, useNativeExtent, thenDo);
+    return m;
+  }
 });
 
 }); // end of module

@@ -16,7 +16,7 @@ Object.extend(lively.morphic.Clipboard, {
 
     handleKeyPaste: function(evt, data, withExtractedMorphsDo) {
         try {
-            if (Array.from(data.types).any(function(type) { return type.toLowerCase() === 'files'})) {
+            if (Array.from(data.types).any(function(type) { return type.toLowerCase() === 'files'; })) {
                 evt.getPosition = function() { return $world.firstHand().getPosition(); };
                 var items = Array.from(data.items);
                 lively.data.FileUpload.handleDroppedFiles(items.invoke('getAsFile'), evt);
@@ -33,15 +33,7 @@ Object.extend(lively.morphic.Clipboard, {
     },
 
     handleItemOrFileImport: function(evt) {
-        // see https://developer.mozilla.org/en/Using_files_from_web_applications
-        var files = evt.dataTransfer.files;
-        if (files && files.length > 0) {
-            lively.data.FileUpload.handleDroppedFiles(files, evt);
-        }
-        var items = evt.dataTransfer.items;
-        if (items && items.length) {
-            lively.data.FileUpload.handleDroppedItems(items, evt);
-        }
+        lively.data.FileUpload.handleImportEvent(evt);
     }
 });
 

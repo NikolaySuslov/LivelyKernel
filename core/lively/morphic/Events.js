@@ -1460,8 +1460,8 @@ handleOnCapture);
                 return  !ea.isPlaceholder &&
                         !ea.isHalo &&
                         (!ea.owner || !ea.owner.isHalo) &&
-                        !ea.areEventsIgnoredOrDisabled() && 
-                        ea.isVisible() && 
+                        !ea.areEventsIgnoredOrDisabled() &&
+                        ea.isVisible() &&
                         ea.ownerChain().every(function(o) { return o.isVisible(); }); });
     },
 
@@ -1884,11 +1884,29 @@ lively.morphic.World.addMethods(
 
     onHTML5DragEnter: function(evt) { evt.stop(); return true; },
 
-    onHTML5DragOver: function(evt) { evt.stop(); return true; },
+    onHTML5DragOver: function(evt) {
+      var targetM = this.morphsContainingPoint(evt.getPosition()).first();
+      if (targetM && targetM.onHTML5Drag) return targetM.onHTML5Drag(evt);
+      else { evt.stop(); return true; }
+    },
 
     onHTML5Drop: function(evt) {
-        lively.morphic.Clipboard.handleItemOrFileImport(evt);
-        evt.stop(); return true;
+      var w = this;
+      lively.lang.fun.composeAsync(
+        function(n) {
+          var m = module("lively.data.FileUpload");
+          if (m.isLoaded()) return n();
+          m.load(); m.runWhenLoaded(function() {n();})
+        },
+        function(n) {
+          var targetM = w.morphsContainingPoint(evt.getPosition()).first();
+          if (targetM && targetM.onHTML5Drop) targetM.onHTML5Drop(evt);
+          else lively.data.FileUpload.handleImportEvent(evt);
+          n();
+        }
+      )(function(err) { err && $world.logError(err); });
+      evt.stop();
+      return true;
     }
 },
 'window related', {
@@ -1975,6 +1993,48 @@ lively.morphic.World.addMethods(
         var scroll = this.getScroll();
         this.scrollToAnimated(scroll[0]+x,scroll[1]+y, time, thenDo);
     }
+
+},
+"manual events", {
+
+  withPseudoHandDo: function(func) {
+    var mbar = this.get("MenuBar");
+    mbar && mbar.disableFixedPositioning();
+    var pseudoHand = build();
+    pseudoHand.openInWorld(this.firstHand().getPosition());
+
+    try {
+      func(pseudoHand, reset);
+    } catch (e) { reset(); }
+
+    function reset() {
+      pseudoHand.remove();
+      mbar && mbar.enableFixedPositioning();
+    }
+
+    function build() {
+      var pseudoHand = lively.newMorph({extent: pt(6,6)})
+      pseudoHand.isEpiMorph = true;
+      pseudoHand.applyStyle({fill: Global.Color.orange, fill: Global.Color.orange, borderRadius: 3});
+      pseudoHand.setPosition($world.hand().getPosition())
+      pseudoHand.addScript(function radar(thenDo) {
+        var radar = lively.morphic.Morph.makeCircle(this.bounds().center(), 5, 3, Global.Color.red, null);
+        radar.openInWorld();
+        radar.setFill(null)
+        radar.withCSSTransitionDo(
+          function() { radar.moveBy(pt(-30+5,-30+5)); radar.setExtent(pt(60,60)); },
+          800, function() { radar.remove(); thenDo && thenDo(); });
+      });
+
+      pseudoHand.addScript(function moveOver(morph, time, thenDo) {
+        if (typeof time === "function") { thenDo = time; time === 1000; }
+        this.setPositionAnimated(morph.globalBounds().center(), time, thenDo)
+      });
+
+      // pseudoHand.setPositionAnimated(pt(200,100), 800);
+      return pseudoHand;
+    }
+  }
 
 });
 
@@ -2444,7 +2504,7 @@ Object.extend(lively.morphic.KeyboardDispatcher, {
         return global
     },
     reset: function() {
-        show('resetting keyboard dispatcher');
+        typeof show == "function" && show('resetting keyboard dispatcher');
         if (!lively.morphic.KeyboardDispatcher._global) return;
         lively.morphic.KeyboardDispatcher._global = null;
     },
