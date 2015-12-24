@@ -57,7 +57,7 @@ var options = args.options([
     "Starts a Lively Kernel server.");
 
 var port = options.port || env.LIFE_STAR_PORT,
-    host = options.port || env.LIFE_STAR_HOST,
+    host = options.host || env.LIFE_STAR_HOST,
     subservers = {};
 
 if (!options.lkDir && env.WORKSPACE_LK_EXISTS) {
@@ -228,16 +228,17 @@ if (options.defined('info')) {
         });
     });
 } else {
+
     // let it fly!
     checkNPMPackages(function(err) {
         if (err) { console.error('error on server start: %s', err); return; }
         require("async").waterfall([
-    	      downloadPartsBin,
-    	      loadNodejsLively,
-            getServerInfo,
-            killOldServer, // Ensure that only one server for the given port is running
-            startServer,
-            writePid
+				    downloadPartsBin,
+				    loadNodejsLively,
+				    getServerInfo,
+				    killOldServer, // Ensure that only one server for the given port is running
+				    startServer,
+				    writePid
         ], function(err) {
             if (err) console.error('Error starting Lively server: %s', err);
             else console.log('Lively server starting...');

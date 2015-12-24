@@ -2155,8 +2155,9 @@ lively.morphic.World.addMethods(
             ]],
             ['Report a bug', this.bugReport.bind(this)],
             ['Run command...', function() { lively.ide.commands.exec('lively.ide.commands.execute'); }],
-            [this.translateMe('Save world as ...'), this.interactiveSaveWorldAs.bind(this), 'synchron'],
-            [this.translateMe('Save world'), this.saveWorld.bind(this), 'synchron']
+            [this.translateMe('Save world as ...'), this.interactiveSaveWorldAs.bind(this)],
+            [this.translateMe('Save world'), this.interactiveSaveWorld.bind(this)]
+
         ];
 
         return items;
@@ -2559,7 +2560,7 @@ lively.morphic.Box.subclass("lively.morphic.TitleBar",
         var buttonLocation = this.innerBounds().topRight().subXY(sp, -sp);
 
         this.buttons.forEach(function(ea) {
-            buttonLocation = buttonLocation.subXY(ea.shape.getBounds().width, 0);
+            buttonLocation = buttonLocation.subXY(ea.shape.bounds().width, 0);
             ea.setPosition(buttonLocation);
             buttonLocation = buttonLocation.subXY(sp, 0)
         });
@@ -2723,7 +2724,7 @@ lively.morphic.Morph.subclass('lively.morphic.Window', Trait('lively.morphic.Dra
     },
 
 
-    getBounds: function($super) {
+    bounds: function($super) {
         if (this.titleBar && this.isCollapsed()) {
             var titleBarTranslation = this.titleBar.getGlobalTransform().getTranslation();
             return this.titleBar.bounds().translatedBy(titleBarTranslation);
@@ -2941,6 +2942,7 @@ lively.morphic.Morph.subclass('lively.morphic.Window', Trait('lively.morphic.Dra
         this.helperMorphs.invoke('remove');
         this.collapsedExtent = this.computeOptimalCollapsedExtent(this.collapsedExtent);
         if (this.titleBar.lookCollapsedOrNot) this.titleBar.lookCollapsedOrNot(true);
+        if (this.collapseButton) this.collapseButton.setLabel("+");
         var self = this;
         function finCollapse() {
             self.state = 'collapsed';  // Set it now so setExtent works right
@@ -2958,6 +2960,7 @@ lively.morphic.Morph.subclass('lively.morphic.Window', Trait('lively.morphic.Dra
         this.collapsedExtent = this.innerBounds().extent();
         this.collapsedPosition = this.getPosition();
         if (this.titleBar.lookCollapsedOrNot) this.titleBar.lookCollapsedOrNot(false);
+        if (this.collapseButton) this.collapseButton.setLabel("–");
         var self = this;
         function finExpand() {
             self.state = 'expanded';
@@ -4482,13 +4485,13 @@ lively.morphic.Box.subclass('lively.morphic.Tree',
 
     initializeWrapping: function() {
         // do some futher wrapping, to make the optional search bar work
-        var wrapper = new lively.morphic.Box(this.getBounds());
+        var wrapper = new lively.morphic.Box(this.bounds());
         wrapper.setPosition(this.getPosition())
         wrapper.setClipMode('scroll');
         wrapper.setLayouter({type: 'vertical'});
         wrapper.layout.resizeHeight = true;
         wrapper.layout.resizeWidth = true;
-        var snapper = new lively.morphic.Box(this.getBounds());
+        var snapper = new lively.morphic.Box(this.bounds());
         snapper.setLayouter({type: 'vertical'});
         snapper.getLayouter().setSpacing(0);
         snapper.getLayouter().setBorderSize(0);

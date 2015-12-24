@@ -139,16 +139,28 @@ Object.extend(lively.morphic, {
     },
 
     printInspect: (function() {
+      var maxColLength = 300;
       function inspectPrinter(val, ignore) {
-        return val && val.isMorph ? String(val) : ignore;
+        if (!val) return ignore;
+        if (val.isMorph) return String(val);
+        var length = val.length || val.byteLength;
+        if (Global.ImageData && val instanceof Global.ImageData) return String(val);
+        if (length !== undefined && length > maxColLength && val.slice) {
+          var printed = val.byteLength ? String(val.slice(0, maxColLength)) : val.slice(0,maxColLength).map(lively.lang.string.print);
+          return "[" + printed + ",...]";
+        }
+        return ignore;
       }
-      
+
       return function(obj, maxDepth) {
-        return Object.isObject(obj) ? lively.lang.obj.inspect(obj, {
+        if (!obj) return String(obj);
+        if (typeof obj === "string") return obj.length > maxColLength ? (obj.slice(0,maxColLength) + "...") : String(obj);
+        if (!Object.isObject(obj)) return String(obj);
+        return lively.lang.obj.inspect(obj, {
           customPrinter: inspectPrinter,
           maxDepth: maxDepth,
           printFunctionSource: true
-        }) : String(obj);
+        });
       }
     })(),
 
@@ -190,28 +202,8 @@ Object.extend(Global, {
 });
 
 lively.morphic.Morph.addMethods(
-'geometry', {
-
-    moveBy: function(point) { this.setPosition(this.getPosition().addPt(point)); },
-    translateBy: function(p) { this.setPosition(this.getPosition().addPt(p)); return this; },
-    align: function (p1, p2) { return this.translateBy(p2.subPt(p1)); },
-    centerAt: function (p) { return this.align(this.bounds().center(), p); },
-    rotateBy: function(delta) { this.setRotation(this.getRotation() + delta); return this; },
-    scaleBy: function(factor) { this.setScale(this.getScale()*factor); },
-    centerAt: function(p) { return this.align(this.bounds().center(), p); },
-    resizeBy: function(point) { this.setExtent(this.getExtent().addPt(point)); },
-    width: function() { return this.getExtent().x; },
-    setWidth: function(w) { return this.setExtent(this.getExtent().withX(w)); },
-    height: function() { return this.getExtent().y; },
-    setHeight: function(h) { return this.setExtent(this.getExtent().withY(h)); }
-
-},
 'morphic relationship', {
-    addMorphBack: function(other) {
-        var next = other === this.submorphs[0] ? this.submorphs[1] : this.submorphs[0];
-        return this.addMorph(other, next);
-    },
-    addMorphFront: function(other) { return this.addMorph(other); },
+
     bringToFront: function() {
         // Hack: remove and re-add morph
         var owner = this.owner;
@@ -247,33 +239,11 @@ lively.morphic.Morph.addMethods(
         var item = {name: this.name || "a " + lively.Class.getConstructor(this).displayName, value: this},
             children = this.submorphs.invoke('treeItemsOfMorphNames', options).compact();
         if (children.length > 0) item.children = children;
-        Properties.own(properties).each(function (v) { item[v] = properties[v]; });
-        scripts.each(function (script) { Object.addScript(item, script); });
+        lively.lang.properties.own(properties).forEach(function (v) { item[v] = properties[v]; });
+        scripts.forEach(function (script) { Object.addScript(item, script); });
         return item;
-    },
+    }
 
-    isSubmorphOf: function(otherMorph) {
-        return otherMorph.withAllSubmorphsDetect(function(morph) {
-            return morph === this }, this);
-    },
-
-    topSubmorph: function() {
-        // the morph on top is the last one in the list
-        return this.submorphs.last();
-    },
-    ownerChain: function() {
-        var owners = [], morph = this;
-        while (morph.owner) {
-            owners.push(morph.owner)
-            morph = morph.owner;
-        }
-        return owners;
-    },
-},
-'convenience accessing', {
-    bounds: function() { return this.getBounds(); },
-    innerBounds: function() { return this.getShape().getBounds(); },
-    getCenter:  function () { return this.bounds().center(); }
 },
 'convenience scripting', {
     stepAndBounce: function () {  // convenience for scripting
@@ -314,6 +284,7 @@ lively.morphic.Morph.addMethods(
     },
 },
 'opening', {
+
     openInWorld: function(pos) {
         var world = lively.morphic.World.current();
         if (!world) {
@@ -325,6 +296,7 @@ lively.morphic.Morph.addMethods(
         pos && this.setPosition(pos);
         return this;
     },
+
     openInWindow: function(optPosOrOptions) {
         var options = optPosOrOptions || {};
         if (options.x !== undefined && options.y !== undefined) options = {pos: options};
@@ -338,6 +310,7 @@ lively.morphic.Morph.addMethods(
         }
         return this.getWindow();
     },
+
     openInWorldCenter: function() {
         // redundant functionality as in openPartItem
         this.openInWorld();
@@ -346,10 +319,6 @@ lively.morphic.Morph.addMethods(
     }
 },
 'removing', {
-    removeAllMorphs: function() {
-        this.submorphs.clone().invoke('remove')
-    },
-
     removeAndDropSubmorphs: function() {
         // Removes the morph and lets all its child morphs drop to its owner
         var supermorph = this.owner || this.world(),
@@ -374,6 +343,7 @@ lively.morphic.Morph.addMethods(
     }
 },
 'undo', {
+
     undoRedoTransformationChange: function(spec, undo) {
         if (!undo || undo == 'undo') {
             if (spec.startOrigin !== spec.endOrigin) {
@@ -407,6 +377,7 @@ lively.morphic.Morph.addMethods(
             }
         }
     },
+
     undoRedoStyleChange: function(spec, undo) {
         var propName = spec.actionName;
         if (!undo || undo == 'undo') {
@@ -416,6 +387,7 @@ lively.morphic.Morph.addMethods(
             this['set'+propName](spec['end'+propName]);
         }
     },
+
     logStyleForUndo: function(propName, phase) {
         // See World.undoReadme
         // Note: propName will be capitalized, as 'BorderWidth'
@@ -473,12 +445,10 @@ lively.morphic.Morph.addMethods(
             endTransform: this.getTransform(), endExtent: this.getBounds().extent(),
             endOwner: this.owner, endOrigin: org
         };
+
         if (this.owner) amendments.endIndexInSubmorphs = this.owner.submorphs.indexOf(this)
             $world.amendMorphicAction(amendments);
-        }
-    },
-'copying', {
-    duplicate: function() { return this.copy() }
+    }
 },
 'styling', {
 
@@ -1206,6 +1176,7 @@ lively.morphic.World.addMethods(
     },
 
     setCurrentUser: function(username) {
+        if (!username) username = "unknown_user";
         this.currentUser = username;
         lively.Config.set('UserName', username);
         lively.require('lively.net.SessionTracker').toRun(function() {
@@ -1215,14 +1186,27 @@ lively.morphic.World.addMethods(
         });
     },
 
-    getUserName: function(noninteractive) {
-        var userName = lively.Config.get('UserName')
-        if (userName && userName !== 'undefined') return userName;
-        if (!noninteractive) userName = this.askForUserName();
+    getUserName: function(noninteractive, thenDo) {
+        // 1. Try to retrieve the current user
+        var userName = lively.Config.get('UserName');
         if (userName && userName !== 'undefined') {
-            lively.Config.set('UserName', userName);
-            return userName;
+          thenDo && thenDo(null, userName);
+          return userName;
         }
+
+        // 2. If we have no current user but are allowed to ask, we do that
+        if (!noninteractive) {
+          this.askForUserName(undefined, function(username) {
+            if (userName && String(userName) !== 'undefined') {
+              lively.Config.set('UserName', userName);
+            }
+            thenDo && thenDo(null, userName || null);
+          });
+          return null;
+        }
+
+        // Otherwise we give up...
+        thenDo && thenDo(null, null);
         return null;
     },
 
@@ -1315,12 +1299,9 @@ lively.morphic.World.addMethods(
     }
 });
 
-lively.morphic.HandMorph.addMethods(
-'focus', {
-    setKeyboardFocus: function() {},
-});
-
 // really necessary to have this class?
+// 2015-11-26 rk: no, it is deprecated and only still exists to allow for
+// backwards compatibility with old widgets/apps. Will be removed in the future
 lively.morphic.Box.subclass('lively.morphic.Panel',
 'settings', {
     style: {

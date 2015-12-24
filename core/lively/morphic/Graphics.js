@@ -215,6 +215,9 @@ Object.subclass("lively.Point",
 'printing', {
     toString: function() {
         return Strings.format("lively.pt(%1.f,%1.f)", this.x, this.y);
+    },
+    toShortString: function() {
+        return Strings.format("pt(%1.f,%1.f)", this.x, this.y);
     }
 },
 'debugging', {
@@ -226,10 +229,11 @@ Object.subclass("lively.Point",
     r: function() {
         // Polar coordinates (theta=0 is East on screen, and increases in CCW
         // direction
-        return this.dist(lively.pt(0, 0));
+        return Math.sqrt(this.x*this.x + this.y*this.y);
     },
 
     fastR: function() {
+        // actually, r() might be faster...
         var a = this.x * this.x + this.y * this.y;
         var x = 17;
         for (var i = 0; i < 6; i++)
@@ -552,6 +556,7 @@ Object.subclass('lively.Rectangle',
     }
 },
 'relations', {
+
     intersection: function(rect) {
         var nx = Math.max(this.x, rect.x);
         var ny = Math.max(this.y, rect.y);
@@ -600,6 +605,8 @@ Object.subclass('lively.Rectangle',
     realHeight: function() {
         return this.y < 0 ? -this.y + this.height : this.height
     },
+
+    area: function() { return this.width * this.height; },
 
     randomPoint: function() {
         return lively.Point.random(lively.pt(this.width, this.height)).addPt(this.topLeft());

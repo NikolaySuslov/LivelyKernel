@@ -428,7 +428,7 @@ lively.morphic.Halo.subclass('lively.morphic.ResizeHalo',
         if (evt.isAltDown()) {
             newExtent = newExtent.griddedBy(this.targetMorph.getGridPoint());
         }
-		this.setInfo('extent: ' + newExtent);
+		this.setInfo('extent: ' + newExtent.toShortString());
         this.targetMorph.setExtent(newExtent.scaleBy(1/this.targetMorph.getScale()));
         this.targetMorph.halos.invoke('alignAtTarget');
     },
@@ -462,7 +462,7 @@ lively.morphic.Halo.subclass('lively.morphic.RescaleHalo',
         var nowHandDist = evt.getPosition().subPt(globalPosition).r();
         var newScale = (this.startScale * nowHandDist / Math.max(this.startHandDist, 40));
         newScale = newScale.detent(0.1, 0.5);
-        this.setInfo('scale: ' + newScale.toPrecision(5));
+        this.setInfo('scale: ' + newScale.toPrecision(4));
         this.targetMorph.setScale(newScale);
         this.targetMorph.halos.invoke('alignAtTarget');  // Seems not to be needed?? - Dan
     },
@@ -508,7 +508,7 @@ lively.morphic.Halo.subclass('lively.morphic.DragHalo',
         if (evt.isAltDown()) {
             newTargetPos = newTargetPos.griddedBy(this.targetMorph.getGridPoint())
         }
-        this.setInfo('pos: ' + newTargetPos)
+        this.setInfo('pos: ' + newTargetPos.toShortString())
         this.lastHaloPosition = this.getPosition();
         this.targetMorph.setPosition(newTargetPos);
 
@@ -664,14 +664,14 @@ lively.morphic.Halo.subclass('lively.morphic.RotateHalo',
             var nowHandAngle = evt.getPosition().subPt(globalPosition).theta();
             var newRotation = this.startRotation + (nowHandAngle - this.startHandAngle);
             newRotation = newRotation.toDegrees().detent(10, 45).toRadians();
-            this.setInfo(newRotation.toDegrees().toPrecision(5) + ' degrees');
+            this.setInfo("rot: " + newRotation.toDegrees().toPrecision(5) + ' degrees');
             this.targetMorph.setRotation(newRotation);
         } else {
             // If shift key, scale it with detents at multiples of 0.5
             var nowHandDist = evt.getPosition().subPt(globalPosition).r();
             var newScale = (this.startScale * nowHandDist / Math.max(this.startHandDist, 40));
             newScale = newScale.detent(0.1, 0.5);
-            this.setInfo('scale: ' + newScale.toPrecision(5));
+            this.setInfo('scale: ' + newScale.toPrecision(4));
             this.targetMorph.setScale(newScale);
         }
         this.targetMorph.halos.invoke('alignAtTarget');  // Seems not to be needed?? - Dan
@@ -1185,10 +1185,9 @@ lively.morphic.PathControlPointHalo.subclass('lively.morphic.PathVertexControlPo
         this.targetMorph.showHalos();
 
         if (!this.overOther) return;
-        if (this.controlPoint.next() !== this.overOther.controlPoint &&
-            this.controlPoint.prev() !== this.overOther.controlPoint) return;
+        // if (this.controlPoint.next() !== this.overOther.controlPoint &&
+        //     this.controlPoint.prev() !== this.overOther.controlPoint) return;
         if (this.controlPoint.isLast() || this.controlPoint.isFirst()) return;
-
         this.controlPoint.remove();
 
         if (lively.Config.get('enableMagneticConnections') && this.magnetSet) {
@@ -1199,13 +1198,17 @@ lively.morphic.PathControlPointHalo.subclass('lively.morphic.PathVertexControlPo
     },
 
     findIntersectingControlPoint: function() {
-        var halos = this.targetMorph.halos;
-        if (!halos) return;
-        for (var i = 0; i < halos.length; i++)
-            if (halos[i].isVertexControlHalo &&
-                halos[i] !== this &&
-                this.bounds().intersects(halos[i].bounds()))
+        // var halos = this.targetMorph.halos;
+        if(this.controlPoint.isFirst()||this.controlPoint.isLast()) return;
+        var halos = this.targetMorph.getControlPointHalos();
+        if (!halos.length) return;
+        for (var i = 0; i < halos.length; i++){
+            if (halos[i].isVertexControlHalo && 
+                halos[i].controlPoint !== this.controlPoint &&
+                this.bounds().containsPoint(halos[i].controlPoint.getGlobalPos())){
                     return halos[i];
+            }
+        }
     },
 
     highlightIfOverOther: function() {
@@ -1218,7 +1221,7 @@ lively.morphic.PathControlPointHalo.subclass('lively.morphic.PathVertexControlPo
 
 lively.morphic.PathControlPointHalo.subclass('lively.morphic.PathInsertPointHalo',
 'settings', {
-    style: {borderRadius: 6},
+    style: {borderRadius: 0},
 },
 'properies', {
     isPathControlPointHalo: true,

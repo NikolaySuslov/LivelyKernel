@@ -77,6 +77,7 @@ Trait('StyleSheetsHTMLShapeTrait',
     },
 
     setBorderWidthHTML: function(ctx, width) {
+        if (!ctx.shapeNode) return width;
         if (this.getBorderStylingMode()) {
             ctx.shapeNode.style.border = '';
             ctx.shapeNode.style.borderWidth = parseInt(width) + 'px ';
@@ -348,9 +349,10 @@ lively.morphic.Morph.addMethods(
         // Check if the own context has either a baseThemeNode or a styleNode
         // (the baseThemeNode should always be inserted before the styleNode)
         if (ctx.baseThemeNode && ctx.baseThemeNode !== styleNode) {
-            ctx.baseThemeNode.parentNode.insertBefore(styleNode, ctx.baseThemeNode.nextSibling);
+            var parent = ctx.baseThemeNode.parentNode || (styleNode && styleNode.parentNode) || document.head;
+            parent.insertBefore(styleNode, ctx.baseThemeNode.nextSibling);
             return;
-        } else if (ctx.styleNode && ctx.styleNode !== styleNode) {
+        } else if (ctx.styleNode && ctx.styleNode.parentNode && ctx.styleNode !== styleNode) {
             ctx.styleNode.parentNode.insertBefore(styleNode, ctx.styleNode);
             return;
         }
@@ -358,7 +360,7 @@ lively.morphic.Morph.addMethods(
         // Search upward in morph hierarchy ...
         while ((parent = parent.owner)) {
             var parentCtx = parent.renderContext();
-            if (parentCtx.styleNode) {
+            if (parentCtx.styleNode && parentCtx.styleNode.parentNode) {
                 parentCtx.styleNode.parentNode.insertBefore(styleNode, parentCtx.styleNode.nextSibling);
                 return;
             }
@@ -372,11 +374,11 @@ lively.morphic.Morph.addMethods(
                     mCtx = m.renderContext();
                 if (mCtx.styleNode && m !== this) {
                     mCtx.styleNode.parentNode.insertBefore(styleNode, mCtx.styleNode.nextSibling);
-
                     return;
                 }
             }
         }
+
         // If still no styleNode was found
         // search downward in morph hierarchy ...
         while (submorphs.length > 0) {
@@ -389,9 +391,7 @@ lively.morphic.Morph.addMethods(
                     return;
                 }
                 if (m.submorphs) {
-                    m.submorphs.each(function (ms) {
-                        nextLevelSubmorphs.push(ms);
-                    });
+                    m.submorphs.forEach(function(ms) { nextLevelSubmorphs.push(ms); });
                 }
             }
             submorphs = nextLevelSubmorphs;
