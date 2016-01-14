@@ -481,7 +481,7 @@ lively.morphic.Morph.subclass('lively.morphic.Image',
         return true;
     },
 },
-'type conversion', {
+'conversion', {
 
     convertTo: function(type, quality) {
         if (!type) return;
@@ -496,10 +496,7 @@ lively.morphic.Morph.subclass('lively.morphic.Image',
         var dataURL = canvas.toDataURL(type, quality);
         this.setImageURL(dataURL);
         return dataURL;
-    }
-
-},
-'inline image', {
+    },
 
     convertToBase64: function() {
         var urlString = this.getImageURL(),
@@ -556,6 +553,18 @@ lively.morphic.Morph.subclass('lively.morphic.Image',
         link.download = name;
         link.href = url;
         link.click();
+    },
+    
+    asCanvasMorph: function() {
+      return lively.morphic.CanvasMorph.fromImageMorph(this);
+    },
+
+    asArrayBuffer: function() {
+      var canvasMorph = this.asCanvasMorph(),
+          el = canvasMorph.renderContext().shapeNode,
+          data = canvasMorph.getContext().getImageData(0,0, el.width, el.height),
+          buffer = data.data.buffer;  // ArrayBuffer
+      return buffer;
     },
 });
 Object.extend(lively.morphic.Image, {
@@ -2155,9 +2164,8 @@ lively.morphic.World.addMethods(
             ]],
             ['Report a bug', this.bugReport.bind(this)],
             ['Run command...', function() { lively.ide.commands.exec('lively.ide.commands.execute'); }],
-            [this.translateMe('Save world as ...'), this.interactiveSaveWorldAs.bind(this)],
-            [this.translateMe('Save world'), this.interactiveSaveWorld.bind(this)]
-
+            [this.translateMe('Save world as ...'), function() { world.interactiveSaveWorldAs(); }],
+            [this.translateMe('Save world'), function() { world.interactiveSaveWorld(); }]
         ];
 
         return items;
