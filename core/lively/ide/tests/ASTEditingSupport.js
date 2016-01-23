@@ -15,7 +15,7 @@ TestCase.subclass('lively.ide.tests.ASTEditingSupport.NodeWalker',
             ast = acorn.parse(src),
             nodes = acorn.walk.findNodesIncluding(ast, 10);
         this.assertEquals(
-            ["Program","VariableDeclaration","ObjectExpression","Property","Identifier"],
+            ["Program","VariableDeclaration", "VariableDeclarator", "ObjectExpression","Property","Identifier"],
             nodes.pluck("type"));
     },
 
@@ -95,7 +95,8 @@ TestCase.subclass('lively.ide.tests.ASTEditingSupport.Navigation',
     testForwardDownSexp: function() {
         var src = "var x = function() { return function(foo) {}; }";
         var nav = this.sut;
-        this.assertEquals(8, nav._forwardDownSexp(src, 0));
+        this.assertEquals(4, nav._forwardDownSexp(src, 0));
+        this.assertEquals(8, nav._forwardDownSexp(src, 4));
     },
 
     testContainingFunctionRange: function() {

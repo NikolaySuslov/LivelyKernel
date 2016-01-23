@@ -423,8 +423,7 @@ lively.morphic.Morph.subclass('lively.morphic.Image',
             delete self._whenLoadedCallbacks;
             var cb; while (cbs && (cb = cbs.shift())) cb.bind(self).delay(0);
         }
-        lively.bindings.connect(this.shape, 'isLoaded', {run: whenLoaded}, 'run', {
-            removeAfterUpdate: true});
+        lively.bindings.once(this.shape, 'isLoaded', {run: whenLoaded}, 'run');
         return this;
     }
 
@@ -2164,8 +2163,8 @@ lively.morphic.World.addMethods(
             ]],
             ['Report a bug', this.bugReport.bind(this)],
             ['Run command...', function() { lively.ide.commands.exec('lively.ide.commands.execute'); }],
-            [this.translateMe('Save world as ...'), function() { world.interactiveSaveWorldAs(); }],
-            [this.translateMe('Save world'), function() { world.interactiveSaveWorld(); }]
+            [this.translateMe('Save world as ...'), function() { $world.currentMenu && $world.currentMenu.remove(); world.interactiveSaveWorldAs(); }],
+            [this.translateMe('Save world'), function() { $world.currentMenu && $world.currentMenu.remove(); world.interactiveSaveWorld(); }]
         ];
 
         return items;
@@ -3310,18 +3309,20 @@ lively.morphic.AbstractDialog.subclass('lively.morphic.PromptDialog',
 
     buildTextInput: function(bounds) {
         var self = this;
-        lively.require('lively.ide.tools.CommandLine').toRun(function() {
-            var opt = self.options || {},
-                histId = opt.historyId,
-                input = lively.ide.tools.CommandLine.get(histId);
-            input.setBounds(self.label.bounds().insetByPt(pt(self.label.getPosition().x * 2, 0)));
-            input.align(input.getPosition(), self.label.bounds().bottomLeft().addPt(pt(0,5)));
-            lively.bindings.connect(input, 'savedTextString', self, 'result');
-            lively.bindings.connect(input, 'onEscPressed', self, 'result', {converter: function() { return null } });
-            lively.bindings.connect(self.panel, 'onEscPressed', self, 'result', {converter: function() { return null}});
-            input.applyStyle({resizeWidth: true, moveVertical: true});
-            self.inputText = self.panel.focusTarget = self.panel.addMorph(input);
-            input.textString = opt.input || '';
+        var m = module('lively.ide.tools.CommandLine');
+        if (!m.isLoaded()) m.load();
+        m.runWhenLoaded(function() {
+          var opt = self.options || {},
+              histId = opt.historyId,
+              input = m.get(histId);
+          input.align(input.getPosition(), self.label.bounds().bottomLeft().addPt(pt(0,5)));
+          input.setExtent(self.label.getExtent());
+          lively.bindings.connect(input, 'savedTextString', self, 'result');
+          lively.bindings.connect(input, 'onEscPressed', self, 'result', {converter: function() { return null } });
+          lively.bindings.connect(self.panel, 'onEscPressed', self, 'result', {converter: function() { return null}});
+          input.applyStyle({resizeWidth: true, moveVertical: true});
+          self.inputText = self.panel.focusTarget = self.panel.addMorph(input);
+          input.textString = opt.input || '';
         });
     },
 

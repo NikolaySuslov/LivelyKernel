@@ -1,5 +1,25 @@
 module('lively.users.tests.Tests').requires("lively.users.Core", "lively.TestFramework").toRun(function() {
 
+TestCase.subclass('lively.users.tests.Attributes',
+"testing", {
+  testAddAttributesToUser: function() {
+    var user1 = lively.users.User.named("test-user-1");
+    
+    user1.addAttributes({foo: 34, bar: 24});
+    user1.setAttributes({bar: 25});
+    this.assertEqualState({bar: 25}, user1.getAttributes(), "add + set");
+    
+    var user2 = lively.users.User.named("test-user-1");
+    this.assertEqualState({bar: 25}, user2.getAttributes(), "attributes are saved");
+
+    user2.clearAttributes();
+    this.assertEqualState({}, user2.getAttributes(), "attributes are deleted");
+
+    var user3 = lively.users.User.named("test-user-1");
+    this.assertEqualState({}, user3.getAttributes(), "attributes are deleted consistently");
+  }
+});
+
 AsyncTestCase.subclass('lively.users.tests.Authorization',
 'running', {
   
@@ -50,6 +70,18 @@ AsyncTestCase.subclass('lively.users.tests.Authorization',
     )(function(err) {
       test.assert(!err, err && show(String(err.stack || err)));
       test.done();
+    });
+  },
+
+  testGlobalRule: function() {
+    var user = new lively.users.User("test-user-1");
+    lively.users.GlobalRules.addRule(url => ({value: !!url.fullPath().match(/\/test\//)}));
+    lively.lang.fun.composeAsync(
+      n => user.canWriteWorld("test/world.html", n),
+      (answer, n) => { this.assertEqualState({value: true}, answer); n(); }
+    )(err => {
+      this.assert(!err, err && show(String(err.stack || err)));
+      this.done();
     });
   },
 
