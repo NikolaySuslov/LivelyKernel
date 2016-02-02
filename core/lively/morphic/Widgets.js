@@ -1946,7 +1946,9 @@ lively.morphic.World.addMethods(
     },
 
     bugReport: function() {
-        window.open(lively.Config.get('bugReportWorld'));
+        require("lively.ide.commands.default").toRun(function() {
+          lively.ide.commands.exec("lively.createBugReport");
+        });
     },
 
     addCodeEditor: function(options) {
@@ -2253,10 +2255,10 @@ lively.morphic.World.addMethods(
         blockMorph.addMorph(transparentMorph);
         if (modalOwner.modalMorph) modalOwner.modalMorph.remove();
         blockMorph.addMorph(morph);
+        modalOwner.modalMorph = modalOwner.addMorph(blockMorph);
         var alignBounds = modalOwner.visibleBounds ?
             modalOwner.visibleBounds() : modalOwner.innerBounds();
         morph.align(morph.bounds().center(), alignBounds.center());
-        modalOwner.modalMorph = modalOwner.addMorph(blockMorph);
         blockMorph.modalTarget = morph;
         lively.bindings.connect(morph, 'remove', blockMorph, 'remove');
         morph.focus();
@@ -2285,7 +2287,8 @@ lively.morphic.World.addMethods(
     prompt: function(message, callback, defaultInputOrOptions) {
         // options = {
         //   input: STRING, -- optional, prefilled input string
-        //   historyId: STRING -- id to identify the input history for this prompt
+        //   historyId: STRING, -- id to identify the input history for this prompt
+        //   useLastInput: BOOLEAN -- use history for default input?
         // }
         return this.openDialog(new lively.morphic.PromptDialog(message, callback, defaultInputOrOptions))
     },
@@ -2770,7 +2773,7 @@ lively.morphic.Morph.subclass('lively.morphic.Window', Trait('lively.morphic.Dra
                 var publishItem = items.detect(function(item) { return item[0] === "Publish"; });
                 if (publishItem) publishItem[1] = function (evt) { self.copyToPartsBinWithUserRequest(); }
 
-                var toRemove = items.detect(function(ea) { return ea[0].match(/select all submorphs/i); });
+                var toRemove = items.detect(function(ea) { return ea[0] && ea[0].match && ea[0].match(/select all submorphs/i); });
                 items.removeAt(items.indexOf(toRemove));
 
                 items.splice(1, 0, ['Set window title', function(evt) {
@@ -3127,37 +3130,45 @@ lively.morphic.App.subclass('lively.morphic.AbstractDialog',
     },
 
     buildLabel: function() {
-        var bounds = new lively.Rectangle(
-            this.inset, this.inset, this.panel.getExtent().x - 2*this.inset, 18);
+        var p = this.panel,
+            bounds = new lively.Rectangle(
+              this.inset, this.inset, p.getExtent().x - 2*this.inset, 18);
         this.label = new lively.morphic.Text(bounds, this.message).beLabel({
             fill: Color.white,
             fixedHeight: false, fixedWidth: false,
             padding: Rectangle.inset(2,3),
             enableGrabbing: false, enableDragging: false});
-        this.panel.addMorph(this.label);
+        p.addMorph(this.label);
 
         // FIXME ugly hack for wide dialogs:
         // wait until dialog opens and text is rendered so that we can
         // determine its extent
         this.label.fit();
         (function fit() {
-            this.label.cachedBounds=null
+            var world = p.world();
+            if (!world)
+            this.label.cachedBounds = null
             var labelBoundsFit = this.label.bounds(),
-                origPanelExtent = this.panel.getExtent(),
+                origPanelExtent = p.getExtent(),
                 panelExtent = origPanelExtent;
             if (labelBoundsFit.width > panelExtent.x) {
                 panelExtent = panelExtent.withX(labelBoundsFit.width + 2*this.inset);
             }
             if (labelBoundsFit.height > bounds.height) {
-                var morphsBelowLabel = this.panel.submorphs
+                var morphsBelowLabel = p.submorphs
                       .without(this.label)
                       .select(function(ea) { return ea.bounds().top() <= labelBoundsFit.bottom(); }),
                     diff = labelBoundsFit.height - bounds.height;
                 // morphsBelowLabel.invoke('moveBy', panelExtent.subPt(origPanelExtent));
                 panelExtent = panelExtent.addXY(0, diff);
             }
-            this.panel.setExtent(panelExtent);
-            this.panel.moveBy(panelExtent.subPt(origPanelExtent).scaleBy(0.5).negated());
+            p.setExtent(panelExtent);
+            p.moveBy(panelExtent.subPt(origPanelExtent).scaleBy(0.5).negated());
+            var worldBounds = world.visibleBounds(), morphBounds = p.globalBounds();
+            if (p.owner && !worldBounds.containsRect(morphBounds)) {
+              morphBounds = worldBounds.translateForInclusion(morphBounds);
+              p.setPosition(p.owner.localize(morphBounds.topLeft()));
+            }
         }).bind(this).delay(0);
     },
 
@@ -3308,12 +3319,13 @@ lively.morphic.AbstractDialog.subclass('lively.morphic.PromptDialog',
     },
 
     buildTextInput: function(bounds) {
-        var self = this;
-        var m = module('lively.ide.tools.CommandLine');
+        var self = this, m = module('lively.ide.tools.CommandLine');
         if (!m.isLoaded()) m.load();
         m.runWhenLoaded(function() {
           var opt = self.options || {},
               histId = opt.historyId,
+              inputString = (opt.useLastInput && m.getLastHistoryItem(histId))
+                         || opt.input || '',
               input = m.get(histId);
           input.align(input.getPosition(), self.label.bounds().bottomLeft().addPt(pt(0,5)));
           input.setExtent(self.label.getExtent());
@@ -3322,7 +3334,7 @@ lively.morphic.AbstractDialog.subclass('lively.morphic.PromptDialog',
           lively.bindings.connect(self.panel, 'onEscPressed', self, 'result', {converter: function() { return null}});
           input.applyStyle({resizeWidth: true, moveVertical: true});
           self.inputText = self.panel.focusTarget = self.panel.addMorph(input);
-          input.textString = opt.input || '';
+          input.textString = inputString;
         });
     },
 

@@ -999,8 +999,10 @@ Object.extend(lively.ide.commands.byName, {
         exec: function() {
 
             var lastSearchTime,
+                fileTypes = [],
                 greper = lively.lang.fun.debounce(500, function(t, input, callback) {
-                  lively.ide.CommandLineSearch.doGrep(input, null, function(lines, baseDir) {
+                  lively.ide.CommandLineSearch.doGrep(input, null, {fileTypes: fileTypes},
+                    function(lines, baseDir) {
                       if (t < lastSearchTime) return;
                       var candidates = lines.map(function(line) {
                           return line.trim() === '' ? null : {
@@ -1011,14 +1013,23 @@ Object.extend(lively.ide.commands.byName, {
                       }).compact();
                       if (candidates.length === 0) candidates = ['nothing found'];
                       callback(candidates);
-                  });
+                    });
               });
+
+            lively.lang.fun.composeAsync(
+              selectFileTypes,
+              openNarrower
+            )(function(err) { err && $world.inform(err.stack || err); })
+
+            return true;
+
+            // -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
             function candidateBuilder(input, callback) {
               lastSearchTime = Date.now();
               callback(['searching...']);
               greper(lastSearchTime, input, callback);
-            };
+            }
 
             function openInTextEditor(candidate) {
                 if (Object.isString(candidate)) return;
@@ -1033,42 +1044,56 @@ Object.extend(lively.ide.commands.byName, {
                 lively.ide.CommandLineSearch.doBrowseGrepString(candidate.match, candidate.baseDir);
             }
 
-            var narrower = lively.ide.tools.SelectionNarrowing.getNarrower({
-                name: 'lively.ide.CommandLineInterface.doGrepSearch.NarrowingList',
-                reactivateWithoutInit: true,
-                spec: {
-                    prompt: 'search for: ',
-                    candidatesUpdaterMinLength: 3,
-                    candidates: [],
-                    maxItems: 25,
-                    candidatesUpdater: candidateBuilder,
-                    keepInputOnReactivate: true,
-                    actions: [{
-                        name: 'open',
-                        exec: function(candidate) {
-                            if (Object.isString(candidate)) return;
-                            var isLively = candidate.match.match(/\.?\/?core\//) && candidate.baseDir.match(/\.?\/?/);
-                            if (isLively) openInSCB(candidate);
-                            else openInTextEditor(candidate);
-                        }
-                    }, {
-                        name: 'open in system browser',
-                        exec: openInSCB
-                    }, {
-                        name: 'open in text editor',
-                        exec: openInTextEditor
-                    }, {
-                        name: "open grep results in workspace",
-                        exec: function() {
-                            var state = narrower.state,
-                                content = narrower.getFilteredCandidates(state.originalState || state).pluck('match').join('\n'),
-                                title = 'search for: ' + narrower.getInput();
-                            $world.addCodeEditor({title: title, content: content, textMode: 'text'}).getWindow().comeForward();
-                        }
-                    }]
-                }
-            });
-            return true;
+            function selectFileTypes(thenDo) {
+              $world.prompt("What kinds of files to search (separate by space)?", function(input) {
+                fileTypes = (input || '').trim().split(" ").compact();
+                thenDo(null);
+              }, {
+                input: '*.js',
+                useLastInput: true,
+                historyId: 'lively.ide.CommandLineInterface.doGrepSearch.file-type-prompt'
+              });
+            }
+
+            function openNarrower(thenDo) {
+              var narrower = lively.ide.tools.SelectionNarrowing.getNarrower({
+                  name: 'lively.ide.CommandLineInterface.doGrepSearch.NarrowingList',
+                  reactivateWithoutInit: true,
+                  spec: {
+                      prompt: 'search for: ',
+                      candidatesUpdaterMinLength: 3,
+                      candidates: [],
+                      maxItems: 25,
+                      candidatesUpdater: candidateBuilder,
+                      keepInputOnReactivate: true,
+                      actions: [{
+                          name: 'open',
+                          exec: function(candidate) {
+                              if (Object.isString(candidate)) return;
+                              var isLively = candidate.match.match(/\.?\/?core\//) && candidate.baseDir.match(/\.?\/?/);
+                              if (isLively) openInSCB(candidate);
+                              else openInTextEditor(candidate);
+                          }
+                      }, {
+                          name: 'open in system browser',
+                          exec: openInSCB
+                      }, {
+                          name: 'open in text editor',
+                          exec: openInTextEditor
+                      }, {
+                          name: "open grep results in workspace",
+                          exec: function() {
+                              var state = narrower.state,
+                                  content = narrower.getFilteredCandidates(state.originalState || state).pluck('match').join('\n'),
+                                  title = 'search for: ' + narrower.getInput();
+                              $world.addCodeEditor({title: title, content: content, textMode: 'text'}).getWindow().comeForward();
+                          }
+                      }]
+                  }
+              });
+              (function() { narrower.focus(); }).delay(0);
+              thenDo(null, narrower);
+            }
         }
     },
     'lively.ide.CommandLineInterface.changeShellBaseDirectory': {
@@ -1114,7 +1139,7 @@ Object.extend(lively.ide.commands.byName, {
               if (path) $world.alertOK('base directory is now ' + path);
               else $world.alertOK('resetting base directory to default');
               lively.shell.setWorkingDirectory(path);
-              path && lively.require("lively.lang.Runtime").toRun(function() {
+              lively.Config.get("lively.lang.Runtime.active") && path && lively.require("lively.lang.Runtime").toRun(function() {
                   lively.lang.Runtime.loadLivelyRuntimeInProjectDir(path) });
               var menuBar = $morph('MenuBar');
               if (menuBar && menuBar.getMorphNamed("cwdLabel")) {
@@ -1217,18 +1242,36 @@ Object.extend(lively.ide.commands.byName, {
                 var ed = ensureCodeEditor(command),
                     mergeUndos, connections = [],
                     title = ed.getWindow().getTitle(),
+                    cmd = ed.currentShellCommand,
                     msgMorph;
+
+                if (cmd) {
+                  lively.bindings.once(cmd, 'end', lively.ide.commands, 'exec', {
+                    updater: function($upd) {
+                      (function() {
+                        $upd('lively.ide.execShellCommand', ed, args)
+                      }).delay(0);
+                    }, varMapping: {ed: ed, args: args}
+                  });
+
+                  return;
+                }
 
                 if (ed.getWindow()) ed.getWindow().setTitle("[running] " + title);
 
-                var cmd = lively.shell.run(command, {addToHistory: addToHistory, group: group}, function(err, cmd) {
+                ed.hasOwnProperty('doNotSerialize') ?
+                  ed.doNotSerialize.pushIfNotIncluded('currentShellCommand') :
+                  (ed.doNotSerialize = ['currentShellCommand']);
+
+                cmd = ed.currentShellCommand = lively.shell.run(command, {addToHistory: addToHistory, group: group}, function(err, cmd) {
+                  ed.currentShellCommand = null;
                   connections.invoke("disconnect");
                   var result = cmd.resultString(true);
 
                   if (!showProgress && insertResult) ed.printObject(null, result);
                   if (msgMorph) {
                     msgMorph.insertion = result;
-                    msgMorph.appendRichText("\nExited with " + cmd.getCode());
+                    msgMorph.appendRichText((msgMorph.textString.endsWith("\n") ? "" : "\n") + "Exited with " + cmd.getCode());
                     msgMorph.enableRemoveOnTargetMorphChange();
                     msgMorph.ensureOpenFor(ed);
                   }
@@ -1256,12 +1299,14 @@ Object.extend(lively.ide.commands.byName, {
                 } else {
                   if (showProgress) {
                     // show progress in status message morph, don't modify source text
-                    msgMorph = ed.ensureStatusMessageMorph();
+                    msgMorph = ed.ensureStatusMessageMorph({fontSize: 9});
                     msgMorph.disableRemoveOnTargetMorphChange();
-                    if (!msgMorph.owner) { ed.setStatusMessage(""); }
+                    if (!msgMorph.owner) ed.setStatusMessage("");
 
                     var connectionSpec = {
                       updater: function($upd, newContent) {
+                        if (!this.targetObj.textString.length)
+                          newContent = newContent.trimLeft();
                         if (this.targetObj.textString.length > 1000) {
                           newContent = "...";
                           connections.invoke("disconnect");
@@ -1644,7 +1689,7 @@ Object.extend(lively.ide.commands.byName, {
       }
     },
 
-    'apis.Github.browse-issues': {
+    'apis.Github.browseIssues': {
       description: 'browse Github issues...',
       exec: function(args) {
         lively.lang.fun.composeAsync(
@@ -1662,12 +1707,12 @@ Object.extend(lively.ide.commands.byName, {
           function(repoName, n) {
             apis.Github.Issues.ui.browseIssues(repoName, n);
           }
-        )(function(err) { err && $world.inform("Error: " + err.stack || err); });
+        )(function(err) { err && $world.inform("Error: " + (err.stack || err)); });
         return true;
       }
     },
 
-    "lively.create-bug-report": {
+    "lively.createBugReport": {
       description: 'report a bug in Lively or make a feature request',
       exec: function(args) {
         window.open(lively.Config.get('bugReportWorld'));

@@ -1692,16 +1692,48 @@ Object.subclass('WebResource',
       }).getProperties();
     },
 
-    ensureExistance: function() {
-        var url = this.getURL();
-        url.getAllParentDirectories().forEach(function(ea) {
-            var webR = new WebResource(ea);
-            if (!webR.exists()) {
-                console.log('creating ' + webR.getURL());
-                webR.create();
-            }
-        })
+    ensureExistance: function(thenDo) {
+        var url = this.getURL(),
+            useProxy = !this._noProxy,
+            isSync = !!this._isSync;
+
+        if (isSync) {
+          var stati = lively.lang.arr.map(
+            url.getAllParentDirectories(),
+            function(url) {
+              var dir = makeWebResource(url);
+              if (!dir.exists()) dir.create();
+              return dir.status;
+            });
+            thenDo && thenDo(stati.detect(function(ea) { return !ea.isSuccess(); }));
+        } else {
+          lively.lang.arr.mapAsyncSeries(
+            url.getAllParentDirectories(),
+            function(url, _, n) {
+              lively.lang.fun.composeAsync(
+                function(n) { makeWebResource(url).whenDone(n).head(); },
+                function(status, n) {
+                  if (status.isSuccess()) n(null, status);
+                  else makeWebResource(url).whenDone(n).create();
+                },
+
+                function(status, n) {
+                  n(status.isSuccess() ? null : status); }
+              )(n);
+            },
+            function(err) { thenDo && thenDo(err); })
+        }
+
         return this;
+
+        // -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+        function makeWebResource(url) {
+          var webR = new WebResource(url);
+          if (!isSync) webR.beAsync();
+          if (!useProxy) webR.noProxy();
+          return webR;
+        }
     }
 
 },

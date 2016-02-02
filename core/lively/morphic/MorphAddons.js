@@ -1778,12 +1778,13 @@ lively.morphic.Text.subclass("lively.morphic.StatusMessage",
 },
 "initializing", {
 
-  initialize: function($super, bounds) {
+  initialize: function($super, bounds, style) {
     $super(bounds, "");
     this.createCloseButton();
     // should "internal" changes in the morph we are showing the message for
     // (like cursor changes in a text morph) make this message morph disappear?
     this.enableRemoveOnTargetMorphChange();
+    style && this.applyStyle(style);
   },
 
   enableRemoveOnTargetMorphChange: function() {
@@ -1858,13 +1859,16 @@ lively.morphic.Text.subclass("lively.morphic.StatusMessage",
           ed.insert(content);
         });
       } else {
-        $world.addCodeEditor({
+        var ed = $world.addCodeEditor({
           title: content.slice(0,60).replace(/\n/g, " "),
           extent: pt(600, 300),
           content: content,
           textMode: textMode ? textMode : "text",
           lineWrapping: true
-        }).getWindow().comeForward();
+        });
+        ed.guessAndSetTabSize();
+        ed.guessAndSetTextMode(textMode);
+        ed.getWindow().comeForward();
       }
     }
 
@@ -1897,7 +1901,7 @@ lively.morphic.Text.subclass("lively.morphic.StatusMessage",
     this.fitThenDo(function() {
       this.setVisible(true);
       this.bringToFront();
-      this.setPosition(forMorph.owner.worldPoint(forMorph.bounds().bottomLeft()));
+      forMorph.world() && this.setPosition(forMorph.owner.worldPoint(forMorph.bounds().bottomLeft()));
       var visibleBounds = world.visibleBounds(),
           bounds = this.bounds(),
           height = Math.min(bounds.height+3, maxY),
@@ -1934,11 +1938,11 @@ lively.morphic.Text.subclass("lively.morphic.StatusMessage",
 
 Trait('lively.morphic.SetStatusMessageTrait', {
 
-  ensureStatusMessageMorph: function() {
+  ensureStatusMessageMorph: function(style) {
     return this._statusMorph ?
       this._statusMorph :
       this._statusMorph = new lively.morphic.StatusMessage(
-        this.getExtent().withY(80).extentAsRectangle());
+        this.getExtent().withY(80).extentAsRectangle(), style);
   },
 
   removeStatusMessage: function() {
@@ -1957,6 +1961,8 @@ Trait('lively.morphic.SetStatusMessageTrait', {
     if (!world) return;
     var self = this,
         sm = this._statusMorph || this.ensureStatusMessageMorph();
+
+    if (sm.insertion) sm.insertion = null;
 
     sm.setMessage(this, msg, color);
     sm.alignAtBottomOf(this);
