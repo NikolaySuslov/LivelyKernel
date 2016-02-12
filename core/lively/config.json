@@ -21,6 +21,7 @@
       "node_modules/lively.lang/lib/class.js",
       "node_modules/lively.lang/lib/messenger.js",
       "node_modules/lively.lang/lib/worker.js",
+      "node_modules/lively.lang/lib/promise.js",
       "core/lively/lang/LocalStorage.js",
       "core/lively/Base.js",
       "core/lively/ModuleSystem.js"
@@ -445,7 +446,7 @@
   ],
 
   "lively.ide.Search": [
-    ["codeSearchGrepExclusions", [".svn", ".git", "node_modules", "combined.js", "BootstrapDebugger.js"], "Patterns for files to exclude from grep code search."]
+    ["codeSearchGrepExclusions", [".svn", ".git", "node_modules", "combined.js", "BootstrapDebugger.js", ".optimized-loading-cache"], "Patterns for files to exclude from grep code search."]
   ],
 
   "lively.morphic.StyleSheets": [

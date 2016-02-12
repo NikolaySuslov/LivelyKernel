@@ -1178,7 +1178,7 @@ Trait('lively.morphic.SetStatusMessageTrait'),
               ed.execCommand('insertEvalResult');
             } else {
               var obj = this.evalSelection();
-              this.printObject(ed, Objects.inspect(obj, {maxDepth: options.depth || this.printInspectMaxDepth}));
+              this.printObject(ed, lively.morphic.printInspect(obj, options.depth || this.printInspectMaxDepth))
             }
         });
     },
@@ -1381,6 +1381,26 @@ Trait('lively.morphic.SetStatusMessageTrait'),
           ed.exitMultiSelectMode();
           sel.setRange(newRange);
           ranges.without(newRange).forEach(function(ea) { sel.addRange(ea, true); });
+          ed.centerSelection();
+          ed.renderer.scrollCursorIntoView();
+        });
+    },
+
+    multiSelectRemoveCurrentRange: function() {
+        this.withAceDo(function(ed) {
+          var sel = ed.selection,
+              ranges = sel.getAllRanges(),
+              range = sel.getRange(),
+              multiRange = ranges.detect(function(r) { return r.isEqual(range); }),
+              i = ranges.indexOf(multiRange),
+              prevI = i === 0 ? ranges.length-1 : i-1,
+              newRange = ranges[prevI];
+          ed.exitMultiSelectMode();
+          sel.setRange(newRange);
+          ranges
+            .without(multiRange)
+            .without(newRange)
+            .forEach(function(ea) { sel.addRange(ea, true); });
           ed.centerSelection();
           ed.renderer.scrollCursorIntoView();
         });
