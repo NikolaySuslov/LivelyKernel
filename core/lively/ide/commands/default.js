@@ -470,11 +470,11 @@ Object.extend(lively.ide.commands.byName, {
 
             if (!win.normalBounds) win.normalBounds = winB;
 
-            var thirdW = Math.min(750, Math.max(1000, bounds.width/3)),
+            var thirdWMin = 650,
+                thirdW = Math.min(thirdWMin, Math.max(1000, bounds.width/3)),
                 thirdColBounds = bounds.withWidth(thirdW);
 
-            if (!how) askForHow();
-            else doResize(how);
+            if (!how) askForHow(); else doResize(how);
 
             // -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
@@ -607,6 +607,14 @@ Object.extend(lively.ide.commands.byName, {
             }
             return true;
         },
+    },
+
+    'lively.ide.commands.interactivelyCreateShortCut': {
+        description: 'create a custom keyboard shortcut',
+        exec: function() {
+          lively.morphic.KeyboardDispatcher.global().interactivelyCreateShortCut()
+          return true;
+        }
     },
 
     'lively.ide.codeditor.installCompletions': {

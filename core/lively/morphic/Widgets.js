@@ -1312,8 +1312,8 @@ lively.morphic.Text.subclass("lively.morphic.MenuItem",
         enableGrabbing: false,
         allowInput: false,
         selectable: false,
-        fontSize: 10.5,
-        padding: Rectangle.inset(20,4),
+        fontSize: 11,
+        padding: Rectangle.inset(20,3),
         textColor: Config.get('textColor') || Color.black,
         fontFamily: "Helvetica,Verdana,sans-serif",
         whiteSpaceHandling: 'nowrap'
@@ -2944,7 +2944,7 @@ lively.morphic.Morph.subclass('lively.morphic.Window', Trait('lively.morphic.Dra
         return this.isCollapsed() ? this.expand() : this.collapse();
     },
     collapse: function() {
-        if (this.isCollapsed()) return;
+        if (this.isCollapsed()) return Promise.resolve();
         this.targetMorph.onWindowCollapse && this.targetMorph.onWindowCollapse();
         this.expandedTransform = this.getTransform();
         this.expandedExtent = this.getExtent();
@@ -2955,35 +2955,38 @@ lively.morphic.Morph.subclass('lively.morphic.Window', Trait('lively.morphic.Dra
         if (this.titleBar.lookCollapsedOrNot) this.titleBar.lookCollapsedOrNot(true);
         if (this.collapseButton) this.collapseButton.setLabel("+");
         var self = this;
-        function finCollapse() {
+        return new Promise(function(resolve, reject) {
+          self.withCSSTransitionForAllSubmorphsDo(function finCollapse() {
             self.state = 'collapsed';  // Set it now so setExtent works right
             if (self.collapsedTransform) self.setTransform(self.collapsedTransform);
             if (self.collapsedExtent) self.setExtent(self.collapsedExtent);
             if (self.collapsedPosition) self.setPosition(self.collapsedPosition);
             self.shape.setBounds(self.titleBar.bounds());
-        }
-        this.withCSSTransitionForAllSubmorphsDo(finCollapse, 250, function() {});
+          }, 250, resolve);
+        });
     },
 
     expand: function() {
-        if (!this.isCollapsed()) return;
+        if (!this.isCollapsed()) return Promise.resolve();
         this.collapsedTransform = this.getTransform();
         this.collapsedExtent = this.innerBounds().extent();
         this.collapsedPosition = this.getPosition();
         if (this.titleBar.lookCollapsedOrNot) this.titleBar.lookCollapsedOrNot(false);
         if (this.collapseButton) this.collapseButton.setLabel("–");
         var self = this;
-        function finExpand() {
-            self.state = 'expanded';
-            if (self.expandedTransform) self.setTransform(self.expandedTransform);
-            if (self.expandedExtent) self.setExtent(self.expandedExtent);
-            if (self.expandedPosition) self.setPosition(self.expandedPosition);
-            self.helperMorphs.forEach(function(ea) { self.addMorph(ea); });
-            if (self.targetMorph && !self.targetMorph.owner) self.addMorph(self.targetMorph);
-        }
-        this.withCSSTransitionForAllSubmorphsDo(finExpand, 250, function() {
-            self.comeForward();
-            self.withAllSubmorphsDo(function(ea) { return ea.onWindowExpand && ea.onWindowExpand(this); });
+        return new Promise(function(resolve, reject) {
+          self.withCSSTransitionForAllSubmorphsDo(function() {
+              self.state = 'expanded';
+              if (self.expandedTransform) self.setTransform(self.expandedTransform);
+              if (self.expandedExtent) self.setExtent(self.expandedExtent);
+              if (self.expandedPosition) self.setPosition(self.expandedPosition);
+              self.helperMorphs.forEach(function(ea) { self.addMorph(ea); });
+              if (self.targetMorph && !self.targetMorph.owner) self.addMorph(self.targetMorph);
+          }, 250, function() {
+              self.comeForward();
+              self.withAllSubmorphsDo(function(ea) { return ea.onWindowExpand && ea.onWindowExpand(this); });
+              resolve();
+          });
         });
     }
 

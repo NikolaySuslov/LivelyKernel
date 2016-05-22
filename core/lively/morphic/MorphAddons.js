@@ -144,6 +144,7 @@ Object.extend(lively.morphic, {
         if (!val) return ignore;
         if (val.isMorph) return String(val);
         if (val instanceof Promise) return "Promise()";
+        if (val instanceof Node) return String(val);
         var length = val.length || val.byteLength;
         if (Global.ImageData && val instanceof Global.ImageData) return String(val);
         if (length !== undefined && length > maxColLength && val.slice) {
@@ -156,6 +157,7 @@ Object.extend(lively.morphic, {
       return function(obj, maxDepth) {
         if (!obj) return String(obj);
         if (typeof obj === "string") return obj.length > maxColLength ? (obj.slice(0,maxColLength) + "...") : String(obj);
+        if (obj instanceof Error) return obj.stack || String(obj);
         if (!Object.isObject(obj)) return String(obj);
         return lively.lang.obj.inspect(obj, {
           customPrinter: inspectPrinter,
@@ -1995,6 +1997,7 @@ Trait('lively.morphic.SetStatusMessageTrait', {
   },
 
   showError: function (e, offset) {
+      if (e && e.originalErr) e = e.originalErr;
       this.setStatusMessage(String(e), Color.red);
       if (e.stack) this._statusMorph.insertion = e.stack;
   }

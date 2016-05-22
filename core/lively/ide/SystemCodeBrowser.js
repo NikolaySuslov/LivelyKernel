@@ -93,7 +93,7 @@ lively.ide.BasicBrowser.subclass('lively.ide.SystemBrowser',
     switchToLocalCodebase: function() {
         this.setTargetURL(
             $world.getUserName() ?
-                $world.getUserDir() :
+                $world.ensureUserDir() :
                 URL.source.getDirectory());
     },
     start: function($super) {
@@ -226,7 +226,8 @@ lively.ide.BasicBrowser.subclass('lively.ide.SystemBrowser',
             lively.ide.RunTestMethodCommand,
             lively.ide.OpenInFileEditorCommand,
             lively.ide.OpenVersionsOfFile,
-            lively.ide.OpenModulePartCommand]
+            lively.ide.OpenModulePartCommand,
+            lively.ide.DebugNextMethodCallCommand]
     },
 
     sourceDatabase: function() { return this.rootNode().target; }
