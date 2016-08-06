@@ -89,6 +89,10 @@ Object.extend(lively, {
                 requiredModules = [];
 
             preReqModuleNames
+                .filter(function(ea) {
+                  var m = lively.lookup(ea, Global);
+                  return m && !m.isLivelyModule ? false : true
+                })
                 .map(LivelyMigrationSupport.fixModuleName)
                 .map(createNamespaceModule)
                 .forEach(function(reqModule) {
@@ -490,7 +494,8 @@ var Module = Object.subclass('lively.Module',
       if (this.isLoaded()) return;
       if (typeof $world === "undefined") { // error loading world, abort
         var err = new Error('Could not load world dependency ' + this.namespaceIdentifier);
-        Global.LivelyLoader.handleStartupError(err);
+        if (Global.LivelyLoader.handleStartupError) Global.LivelyLoader.handleStartupError(err);
+        else console.error(err);
         return;
       }
       if (this.loadAttempts > 3) {
