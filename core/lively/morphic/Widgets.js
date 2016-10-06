@@ -1282,8 +1282,18 @@ lively.morphic.Box.subclass('lively.morphic.Menu',
             }
         });
 
-    }
-
+    },
+  },
+'touch events',{
+  onTouchStart:function(evt){
+    evt.hand.move(evt);
+    this.onFocus(evt);
+    this.onMouseOver(evt);
+  },
+  onTouchMove:function(evt){
+    evt.hand.move(evt)
+    this.onMouseMoveEntry(evt);
+  }
 });
 
 Object.extend(lively.morphic.Menu, {
@@ -1301,6 +1311,7 @@ Object.extend(lively.morphic.Menu, {
 
 lively.morphic.Text.subclass("lively.morphic.MenuItem",
 'settings', {
+    isLoggingEnabled:false,
     isMenuItemMorph: true,
     style: {
         clipMode: 'hidden',
@@ -1335,6 +1346,7 @@ lively.morphic.Text.subclass("lively.morphic.MenuItem",
         arrowMorph.setPosition(pt(extent.x, 0));
         arrowMorph.applyStyle(this.getStyle());
         this.arrow = this.addMorph(arrowMorph);
+        arrowMorph.isLoggingEnabled = false
     },
 
     showDivider: function() {
@@ -1360,7 +1372,7 @@ lively.morphic.Text.subclass("lively.morphic.MenuItem",
     },
 
     onMouseUp: function($super, evt) {
-        if (evt.hand.clickedOnMorph !== this && (Date.now() - evt.hand.clickedOnMorphTime < 500)) {
+        if (evt.hand.clickedOnMorph !== this && (Date.now() - evt.hand.clickedOnMorphTime < 300)) {
             return false; // only a click
         }
         $super(evt);
@@ -1403,7 +1415,15 @@ lively.morphic.Text.subclass("lively.morphic.MenuItem",
         }
     }
 
-});
+},
+'touch events',{
+  onTouchStart:function(evt){
+    evt.hand.move(evt);
+    evt.hand.clickOnMorph=this;
+    this.onMouseOver(evt);
+  }
+}
+);
 
 lively.morphic.Morph.addMethods(
 'menu', {
@@ -2009,6 +2029,19 @@ lively.morphic.World.addMethods(
             lively.morphic.World.current().firstHand().grabMorph(part);
         }]}))
 
+        var drawing = ["Drawing Canvas",function(){
+      if(!$world.drawingCanvas) {
+          $world.loadPartItem('DrawingCanvas', 'https://lively-web.org/PartsBin/Pronto-system/',function(err,part){
+            $world.drawingCanvas = part
+            $world.drawingCanvas.slideDown();
+            $world.drawingCanvas.getMorphNamed('penButton').doAction()
+          });
+          return;
+      }
+      $world.drawingCanvas.slideDown()
+      $world.drawingCanvas.getMorphNamed('penButton').doAction()
+    }];
+        items.push(drawing)
 
         partNames = ["List", "Slider", "Button"].sort()
         items.pushAll(partNames.collect(function(ea) { return [ea, function() {
@@ -2044,7 +2077,7 @@ lively.morphic.World.addMethods(
                     function(input) {
                       if (!input || input === "cancel") return;
                       else if (input === "saved") {
-                        lively.persistence.Debugging.svgGraphForSerializedObjectGraph(URL.source);
+                        lively.persistence.Debugging.svgGraphForWorld(URL.source);
                       } else {
                         var json = lively.persistence.Serializer.serialize($world);
                         lively.persistence.Debugging.svgGraphForSerializedObjectGraph(JSON.parse(json));
@@ -2632,6 +2665,9 @@ lively.morphic.Box.subclass("lively.morphic.TitleBar",
       }
       return false;
     }
+},
+'undo',{
+  isLoggingEnabled:false
 });
 
 lively.morphic.Morph.subclass('lively.morphic.Window', Trait('lively.morphic.DragMoveTrait').derive({override: ['onDrag','onDragStart', 'onDragEnd']}),
@@ -2724,7 +2760,7 @@ lively.morphic.Morph.subclass('lively.morphic.Window', Trait('lively.morphic.Dra
             var owner = win.owner;
             win.logTransformationForUndo('close', 'start');
             win.remove(); // win will be removed from the owner and it will loose its owner
-            win.logTransformationForUndo('close', 'end');
+              win.logTransformationForUndo('close', 'end');
             if (owner.activateTopMostWindow) owner.activateTopMostWindow();
         }
 
