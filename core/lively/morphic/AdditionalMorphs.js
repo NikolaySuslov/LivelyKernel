@@ -142,7 +142,10 @@ lively.morphic.Morph.subclass('lively.morphic.CanvasMorph',
     },
 
     toImage: function() {
-        return lively.morphic.Image.fromURL(this.toDataURI(), this.getCanvasBounds());
+        var image = lively.morphic.Image.fromURL(this.toDataURI(), this.getCanvasBounds());
+        image.setRotation(this.getRotation());
+        image.setScale(this.getScale());
+        return image;
     },
 
     toImageDataArray: function(optBounds) {
@@ -217,7 +220,15 @@ lively.morphic.Morph.subclass('lively.morphic.CanvasMorph',
 
     positionToColor: function(pos, pixelArr) {
         var width = this.getContext().canvas.width;
-        return this.colorAt(4*pos.y*width + 4*pos.x, pixelArr);
+        return this.colorAt(4 * Math.round(pos.y) * width 
+                  + 4 * Math.round(pos.x), pixelArr);
+    },
+
+    shapeContainsPoint: function($super, localPt) {
+        // Need to check for non-transparent pixels
+        var colorTuple = this.positionToColor(localPt), // an array [r, g, b, a]
+            alpha = colorTuple[3];
+        return alpha == 0 ? false : $super(localPt)
     },
 
     getColors: function() {

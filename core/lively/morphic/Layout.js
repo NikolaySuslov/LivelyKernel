@@ -135,6 +135,12 @@ lively.morphic.Morph.addMethods(
         // renamed to make absolutely sure it does not collide with Magnet>>getGlobalPosition..
         return this.getGlobalTransform().transformPoint(pt(0,0).subPt(this.getOrigin()));
     },
+    setPositionInWorld: function(worldPt) {
+        // the inverse of getPositionInWorld...
+        var localPos = this.getGlobalTransform().inverse().transformPoint(worldPt),
+            originOffset = this.getPosition().subPt(this.getOrigin()).addPt(localPos.negated());
+        return this.setPosition(originOffset);
+    },
 
     obtainPlaceholder: function(forMorph) {
         return this.placeholder || (this.placeholder = this.createPlaceholder());
@@ -784,6 +790,7 @@ lively.morphic.Layout.Layout.subclass('lively.morphic.Layout.GridLayout',
     },
     getRowHeight: function(rowIndex) {
         return this.rows[rowIndex].reduce(function(s, ea) {
+            if (!ea) {return s};
             return Math.max(ea.getExtent().y, s); }, 0);
     },
     adjustRowAndColSizes: function() {

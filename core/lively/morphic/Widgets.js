@@ -1294,7 +1294,14 @@ lively.morphic.Box.subclass('lively.morphic.Menu',
     evt.hand.move(evt)
     this.onMouseMoveEntry(evt);
   }
-});
+},
+'gesture events', {
+  onGestureStart:function(evt){return false;},
+  onGestureChange:function(evt){return false;},
+  onGestureEnd:function(evt){return false;}
+}
+
+);
 
 Object.extend(lively.morphic.Menu, {
     openAtHand: function(title, items) {
@@ -1422,6 +1429,11 @@ lively.morphic.Text.subclass("lively.morphic.MenuItem",
     evt.hand.clickOnMorph=this;
     this.onMouseOver(evt);
   }
+},
+'gesture events', {
+  onGestureStart:function(evt){return false;},
+  onGestureChange:function(evt){return false;},
+  onGestureEnd:function(evt){return false;}
 }
 );
 
@@ -1779,6 +1791,21 @@ lively.morphic.World.addMethods(
         });
     },
 
+    openDrawingCanvas: function(whenDone, morphToEdit) {
+      if($world.drawingCanvas) { 
+        $world.drawingCanvas.prepareForEdits(morphToEdit);
+        return whenDone instanceof Function && whenDone($world.drawingCanvas);
+      } else {
+        $world.loadPartItem('DrawingCanvas', 
+              'https://lively-web.org/PartsBin/Pronto-system/',
+              function(err, canvas) {
+                  $world.drawingCanvas = canvas
+                  canvas.prepareForEdits(morphToEdit);
+                  return whenDone instanceof Function && whenDone(canvas);
+              });
+      }
+    },
+    
     openObjectEditor: function(whenDone) {
         lively.require('lively.ide.tools.ObjectEditor').toRun(function() {
             var editor = lively.BuildSpec('lively.ide.tools.ObjectEditor').createMorph().
@@ -2029,18 +2056,7 @@ lively.morphic.World.addMethods(
             lively.morphic.World.current().firstHand().grabMorph(part);
         }]}))
 
-        var drawing = ["Drawing Canvas",function(){
-      if(!$world.drawingCanvas) {
-          $world.loadPartItem('DrawingCanvas', 'https://lively-web.org/PartsBin/Pronto-system/',function(err,part){
-            $world.drawingCanvas = part
-            $world.drawingCanvas.slideDown();
-            $world.drawingCanvas.getMorphNamed('penButton').doAction()
-          });
-          return;
-      }
-      $world.drawingCanvas.slideDown()
-      $world.drawingCanvas.getMorphNamed('penButton').doAction()
-    }];
+        var drawing = ["Drawing Canvas", this.openDrawingCanvas];
         items.push(drawing)
 
         partNames = ["List", "Slider", "Button"].sort()
@@ -4511,7 +4527,8 @@ lively.morphic.Box.subclass('lively.morphic.SliderKnob',
 
         if (isNaN(newValue)) newValue = 0;
         var prevVal = slider.getScaledValue(this);
-        var newVal = slider.setScaledValue(slider.clipValue(newValue), this);
+        slider.setScaledValue(slider.clipValue(newValue), this);
+        var newVal = slider.getScaledValue(this);
         if (+newVal != +prevVal) this.hitPoint = slider.localize(evt.getPosition());
     },
     onDragEnd: function($super, evt) { return $super(evt) },

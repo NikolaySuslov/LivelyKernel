@@ -293,6 +293,7 @@ lively.BuildSpec('lively.ide.tools.CodeSearch', {
 
             if (type === 'namespace' && matchesSearch(obj.namespaceIdentifier)) {
                 found.push({
+                    doNotSerialize: ["object", "parent"],
                     object: obj,
                     objectName: obj.namespaceIdentifier,
                     type: type,
@@ -307,6 +308,7 @@ lively.BuildSpec('lively.ide.tools.CodeSearch', {
 
             // we get this already with initialize
             if (methodName === 'constructor' && type === 'class') return;
+            if (methodName === 'toString' && type === 'extend') return;
             if (methodName === 'superclass' && lively.Class.isClass(obj.superclass)) return;
 
             var proto = obj.constructor && obj.constructor.prototype;
@@ -347,6 +349,7 @@ lively.BuildSpec('lively.ide.tools.CodeSearch', {
             if (![name, methodName, source].some(matchesSearch)) return;
 
             found.push({
+                doNotSerialize: ["object", "parent"],
                 object: obj,
                 selector: methodName,
                 objectName: name,
